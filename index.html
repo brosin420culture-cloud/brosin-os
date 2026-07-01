@@ -29,12 +29,16 @@
   "react": "https://esm.sh/react@18.3.1",
   "react-dom": "https://esm.sh/react-dom@18.3.1",
   "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
-  "lucide-react": "https://esm.sh/lucide-react@0.456.0?external=react&deps=react@18.3.1"
+  "lucide-react": "https://esm.sh/lucide-react@0.456.0?external=react&deps=react@18.3.1",
+  "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2"
 }}
 </script>
 <script>
   // Route AI calls through the same-origin serverless proxy (avoids mobile CORS blocking)
   window.__BROSIN_PROXY = "/.netlify/functions/claude";
+  // Cloud sync (Supabase) — publishable key is safe to embed (protected by Row-Level Security)
+  window.__SB_URL = "https://xjawjkrgxdhxanwtjcpb.supabase.co";
+  window.__SB_KEY = "sb_publishable_cc5n2vvUF6SeLcGEz7DgOg_R_b54kJd";
   // Local persistence shim so the app's window.storage works on-device (no Claude sandbox here)
   window.storage = {
     get: async function(k){ try { var v = localStorage.getItem("brosin:"+k); return v ? JSON.parse(v) : null; } catch(e){ return null; } },
@@ -224,12 +228,37 @@ const store = {
   },
 };
 
+/* ---------- cloud sync (Supabase, optional — only in the installed PWA) ---------- */
+let _supa = null;
+async function getSupa() {
+  try {
+    if (_supa) return _supa;
+    if (typeof window === "undefined" || !window.__SB_URL || !window.__SB_KEY) return null;
+    const mod = await import("@supabase/supabase-js");
+    _supa = mod.createClient(window.__SB_URL, window.__SB_KEY);
+    return _supa;
+  } catch (e) { return null; }
+}
+async function cloudLoad(sb, userId) {
+  try {
+    const { data, error } = await sb.from("app_state").select("data").eq("user_id", userId).maybeSingle();
+    if (error) return null;
+    return data ? data.data : null;
+  } catch (e) { return null; }
+}
+async function cloudSave(sb, userId, data) {
+  try {
+    const { error } = await sb.from("app_state").upsert({ user_id: userId, data, updated_at: new Date().toISOString() });
+    return !error;
+  } catch (e) { return false; }
+}
+
 /* ---------- Claude ----------
    Inside Claude.ai: direct keyless call (auto-auth).
    Installed PWA: routes through a same-origin serverless proxy (window.__BROSIN_PROXY)
    so the phone never calls api.anthropic.com directly — avoids browser/CORS blocking. */
 async function callClaude(messages, system, keyOverride) {
-  const model = "claude-sonnet-4-20250514";
+  const model = "claude-sonnet-5";
   const key = keyOverride || (typeof window !== "undefined" ? window.__BROSIN_AI_KEY : null);
   const proxy = typeof window !== "undefined" ? window.__BROSIN_PROXY : null;
   const direct = () => {
@@ -2417,10 +2446,11 @@ function Dots() {
 /* ============================================================
    PERFIL / AJUSTES
    ============================================================ */
-function ProfileScreen({ state, dispatch, onChangePin, hasPin, onResetAll, onRestore }) {
+function ProfileScreen({ state, dispatch, onChangePin, hasPin, onResetAll, onRestore, cloud }) {
   const [notifOpen, setNotifOpen] = useState(false);
   const [aiKeyOpen, setAiKeyOpen] = useState(false);
   const [backupOpen, setBackupOpen] = useState(false);
+  const [cloudOpen, setCloudOpen] = useState(false);
   const totalItems = state.collections.reduce((s, c) => s + (c.items || []).length, 0);
   const stats = [
     { label: "Eventos", value: state.events.length },
@@ -2451,6 +2481,14 @@ function ProfileScreen({ state, dispatch, onChangePin, hasPin, onResetAll, onRes
       </div>
 
       <div style={{ display: "grid", gap: 10 }}>
+        {cloud && (
+          <button onClick={() => setCloudOpen(true)} style={{ ...settingRow, borderColor: cloud.user ? C.good : C.line }}>
+            <div style={{ width: 38, height: 38, borderRadius: 11, background: cloud.user ? "rgba(61,220,132,.15)" : C.ink3, display: "grid", placeItems: "center" }}><RefreshCcw size={18} color={cloud.user ? C.good : C.yellow} /></div>
+            <span style={{ flex: 1, textAlign: "left", color: C.textHi, fontWeight: 700, fontSize: 14.5 }}>Cuenta en la nube</span>
+            <span style={{ color: cloud.user ? C.good : C.textLo, fontSize: 12, fontWeight: 700, marginRight: 4 }}>{cloud.user ? "Sincronizando" : "Activar"}</span>
+            <ChevronRight size={18} color={C.textLo} />
+          </button>
+        )}
         <button onClick={() => setNotifOpen(true)} style={settingRow}>
           <div style={{ width: 38, height: 38, borderRadius: 11, background: C.ink3, display: "grid", placeItems: "center" }}><BellRing size={18} color={C.yellow} /></div>
           <span style={{ flex: 1, textAlign: "left", color: C.textHi, fontWeight: 700, fontSize: 14.5 }}>Avisos y notificaciones</span>
@@ -2498,6 +2536,12 @@ function ProfileScreen({ state, dispatch, onChangePin, hasPin, onResetAll, onRes
       <Sheet open={aiKeyOpen} onClose={() => setAiKeyOpen(false)} title="Conectar IA">
         <AiKeyForm value={state.profile.aiKey || ""} onSave={(k, status) => { dispatch({ type: "profile", payload: { aiKey: k, aiStatus: status } }); }} />
       </Sheet>
+
+      {cloud && (
+        <Sheet open={cloudOpen} onClose={() => setCloudOpen(false)} title="Cuenta en la nube">
+          <CloudPanel cloud={cloud} />
+        </Sheet>
+      )}
 
       <Sheet open={backupOpen} onClose={() => setBackupOpen(false)} title="Copia de seguridad">
         <BackupPanel state={state} onMark={() => dispatch({ type: "profile", payload: { lastBackup: nowISO() } })} onRestore={(data) => { onRestore(data); setBackupOpen(false); }} />
@@ -2652,6 +2696,52 @@ function BackupPanel({ state, onRestore, onMark }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function CloudPanel({ cloud }) {
+  const [email, setEmail] = useState((cloud.user && cloud.user.email) || "");
+  const [pw, setPw] = useState("");
+  const [mode, setMode] = useState("in"); // in | up
+  if (cloud.user) {
+    return (
+      <div>
+        <div style={{ ...card, padding: 14, marginBottom: 12, borderColor: C.good, background: "rgba(61,220,132,.08)" }}>
+          <div style={{ color: C.textHi, fontWeight: 800, fontSize: 14.5, display: "flex", alignItems: "center", gap: 8 }}><Check size={16} color={C.good} /> Sesión iniciada</div>
+          <div style={{ color: C.textLo, fontSize: 13, marginTop: 4 }}>{cloud.user.email}</div>
+        </div>
+        <p style={{ color: C.textLo, fontSize: 13.5, lineHeight: 1.55 }}>
+          Tus datos se guardan en la nube y se sincronizan solos entre todos tus dispositivos. Entra con este mismo email en otro móvil u ordenador y tendrás todo.
+        </p>
+        {cloud.msg && <div style={{ color: cloud.msg.ok ? C.good : C.bad, fontSize: 12.5, marginBottom: 10 }}>{cloud.msg.t}</div>}
+        <button onClick={cloud.signOut} style={{ ...iconBtn, width: "100%", height: 46, gap: 8, fontWeight: 800, fontSize: 14, color: C.textLo }}>
+          <X size={16} /> Cerrar sesión en este dispositivo
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <p style={{ color: C.textLo, fontSize: 13.5, lineHeight: 1.55, marginTop: 0 }}>
+        Crea una cuenta (o entra) para <strong style={{ color: C.textHi }}>guardar tus datos en la nube</strong> y sincronizarlos entre el móvil y el ordenador. Gratis.
+      </p>
+      <Field label="Email"><input style={inputStyle} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="tucorreo@email.com" type="email" autoFocus /></Field>
+      <Field label="Contraseña"><input style={inputStyle} value={pw} onChange={(e) => setPw(e.target.value)} placeholder="mínimo 6 caracteres" type="password" /></Field>
+      {cloud.msg && (
+        <div style={{ borderRadius: 12, padding: "10px 12px", marginBottom: 12, fontSize: 12.8, background: cloud.msg.ok ? "rgba(61,220,132,.12)" : "rgba(255,92,92,.1)", border: `1px solid ${cloud.msg.ok ? C.good : C.bad}`, color: C.textHi }}>
+          {cloud.msg.t}
+        </div>
+      )}
+      <PrimaryBtn full color={C.good} onClick={cloud.busy ? undefined : () => (mode === "in" ? cloud.signIn(email, pw) : cloud.signUp(email, pw))}>
+        <span style={{ color: C.ink }}>{cloud.busy ? "Un momento…" : mode === "in" ? "Entrar" : "Crear cuenta"}</span>
+      </PrimaryBtn>
+      <button onClick={() => setMode(mode === "in" ? "up" : "in")} style={{ ...iconBtn, width: "100%", height: 42, marginTop: 10, fontWeight: 700, fontSize: 13, color: C.textLo }}>
+        {mode === "in" ? "No tengo cuenta — crear una" : "Ya tengo cuenta — entrar"}
+      </button>
+      <div style={{ color: C.textLo, fontSize: 11.5, marginTop: 12, lineHeight: 1.5 }}>
+        Tus datos actuales de este dispositivo se subirán a la nube al entrar por primera vez.
+      </div>
     </div>
   );
 }
@@ -3267,12 +3357,97 @@ function BrosinOS() {
   const firedRef = useRef(new Set());
   const nagRef = useRef(0);
   const sleepNagRef = useRef(null);
+  const [cloudUser, setCloudUser] = useState(null);
+  const [cloudBusy, setCloudBusy] = useState(false);
+  const [cloudMsg, setCloudMsg] = useState(null);
+  const stateRef = useRef(state);
+  const cloudSkip = useRef(false);
+  const syncedUserRef = useRef(null);
+  useEffect(() => { stateRef.current = state; });
 
   /* lightbox bus */
   useEffect(() => { lightboxBus.open = (src) => setLightbox(src); return () => { lightboxBus.open = () => {}; }; }, []);
 
   /* sync optional AI key (used by the installed PWA) */
   useEffect(() => { if (typeof window !== "undefined") window.__BROSIN_AI_KEY = (state.profile && state.profile.aiKey) || null; }, [state.profile && state.profile.aiKey]);
+
+  /* cloud: watch auth session */
+  useEffect(() => {
+    let sub = null;
+    (async () => {
+      const sb = await getSupa();
+      if (!sb) return;
+      try {
+        const { data } = await sb.auth.getSession();
+        const s = data && data.session;
+        if (s && s.user) setCloudUser({ id: s.user.id, email: s.user.email });
+        const r = sb.auth.onAuthStateChange((_e, sess) => setCloudUser(sess && sess.user ? { id: sess.user.id, email: sess.user.email } : null));
+        sub = r && r.data && r.data.subscription;
+      } catch (e) {}
+    })();
+    return () => { try { sub && sub.unsubscribe(); } catch (e) {} };
+  }, []);
+
+  /* cloud: initial sync on login (pull cloud, or push local if cloud empty) */
+  useEffect(() => {
+    if (!cloudUser || !state.ready) return;
+    if (syncedUserRef.current === cloudUser.id) return;
+    syncedUserRef.current = cloudUser.id;
+    (async () => {
+      const sb = await getSupa(); if (!sb) return;
+      const cloudData = await cloudLoad(sb, cloudUser.id);
+      if (cloudData && (cloudData.profile || cloudData.events)) {
+        cloudSkip.current = true;
+        dispatch({ type: "hydrate", payload: { ...EMPTY, ...cloudData, ready: true } });
+        setCloudMsg({ ok: true, t: "Datos traídos de la nube ✓" });
+      } else {
+        const { ready, ...persist } = stateRef.current;
+        await cloudSave(sb, cloudUser.id, persist);
+        setCloudMsg({ ok: true, t: "Sincronizado ✓" });
+      }
+    })();
+  }, [cloudUser, state.ready]);
+
+  /* cloud: auto-save on changes (debounced) */
+  useEffect(() => {
+    if (!cloudUser || !state.ready) return;
+    if (cloudSkip.current) { cloudSkip.current = false; return; }
+    const id = setTimeout(async () => {
+      const sb = await getSupa(); if (!sb) return;
+      const { ready, ...persist } = state;
+      cloudSave(sb, cloudUser.id, persist);
+    }, 900);
+    return () => clearTimeout(id);
+  }, [state, cloudUser]);
+
+  const cloudSignIn = async (email, password) => {
+    setCloudBusy(true); setCloudMsg(null);
+    const sb = await getSupa();
+    if (!sb) { setCloudBusy(false); setCloudMsg({ ok: false, t: "La nube solo funciona en la app instalada." }); return; }
+    try {
+      const { error } = await sb.auth.signInWithPassword({ email: (email || "").trim(), password });
+      setCloudBusy(false);
+      if (error) setCloudMsg({ ok: false, t: error.message });
+      else setCloudMsg({ ok: true, t: "Sesión iniciada. Sincronizando…" });
+    } catch (e) { setCloudBusy(false); setCloudMsg({ ok: false, t: "No pude conectar. Reintenta." }); }
+  };
+  const cloudSignUp = async (email, password) => {
+    setCloudBusy(true); setCloudMsg(null);
+    const sb = await getSupa();
+    if (!sb) { setCloudBusy(false); setCloudMsg({ ok: false, t: "La nube solo funciona en la app instalada." }); return; }
+    try {
+      const { data, error } = await sb.auth.signUp({ email: (email || "").trim(), password });
+      setCloudBusy(false);
+      if (error) setCloudMsg({ ok: false, t: error.message });
+      else if (data && data.session) setCloudMsg({ ok: true, t: "Cuenta creada. Sincronizando…" });
+      else setCloudMsg({ ok: true, t: "Cuenta creada. Ahora pulsa Entrar." });
+    } catch (e) { setCloudBusy(false); setCloudMsg({ ok: false, t: "No pude conectar. Reintenta." }); }
+  };
+  const cloudSignOut = async () => {
+    const sb = await getSupa(); if (sb) { try { await sb.auth.signOut(); } catch (e) {} }
+    syncedUserRef.current = null; setCloudUser(null); setCloudMsg(null);
+  };
+  const cloud = { user: cloudUser, busy: cloudBusy, msg: cloudMsg, signIn: cloudSignIn, signUp: cloudSignUp, signOut: cloudSignOut };
 
   const pushToast = useCallback((title, body, useNotif = true) => {
     const id = uid();
@@ -3409,7 +3584,7 @@ function BrosinOS() {
               {tab === "pantalla" && <ScreenTimeScreen state={state} dispatch={dispatch} back={() => setTab("home")} />}
               {tab === "conduccion" && <DrivingScreen state={state} dispatch={dispatch} back={() => setTab("home")} toast={pushToast} />}
               {tab === "equipo" && <TeamScreen state={state} dispatch={dispatch} back={() => setTab("home")} me={state.profile.name} />}
-              {tab === "perfil" && <ProfileScreen state={state} dispatch={dispatch} hasPin={!!pin} onChangePin={() => setSettingPin(true)} onResetAll={resetAll} onRestore={(data) => { dispatch({ type: "hydrate", payload: { ...EMPTY, ...data, ready: true } }); setTab("home"); }} />}
+              {tab === "perfil" && <ProfileScreen state={state} dispatch={dispatch} hasPin={!!pin} onChangePin={() => setSettingPin(true)} onResetAll={resetAll} cloud={cloud} onRestore={(data) => { dispatch({ type: "hydrate", payload: { ...EMPTY, ...data, ready: true } }); setTab("home"); }} />}
             </>
           )}
         </div>
