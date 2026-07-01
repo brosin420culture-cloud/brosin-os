@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
 <title>Brosin OS</title>
 <meta name="description" content="Tu segundo cerebro. Bro, no te quedes sin." />
-<meta name="brosin-build" content="v8-camara" />
+<meta name="brosin-build" content="v9-cloudflare" />
 <meta name="theme-color" content="#0d0d0d" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
@@ -36,7 +36,7 @@
 </script>
 <script>
   // Route AI calls through the same-origin serverless proxy (avoids mobile CORS blocking)
-  window.__BROSIN_PROXY = "/.netlify/functions/claude";
+  window.__BROSIN_PROXY = "/api/claude";
   // Cloud sync (Supabase) — publishable key is safe to embed (protected by Row-Level Security)
   window.__SB_URL = "https://xjawjkrgxdhxanwtjcpb.supabase.co";
   window.__SB_KEY = "sb_publishable_cc5n2vvUF6SeLcGEz7DgOg_R_b54kJd";
@@ -55,7 +55,7 @@
 <div id="root">
   <div id="splash">
     <img class="bl" src="./brosin_logo.png" alt="Brosin" />
-    <div class="s">Despertando la colmena… · v8 cámara</div>
+    <div class="s">Despertando la colmena… · v9</div>
     <div class="l"></div>
   </div>
 </div>
