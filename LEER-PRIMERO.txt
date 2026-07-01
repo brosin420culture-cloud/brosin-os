@@ -1,0 +1,48 @@
+BROSIN OS — Instalar en el móvil + activar la IA (versión con servidor)
+======================================================================
+
+Esta versión ya NO llama a la IA directamente desde el móvil (eso lo bloqueaba
+el navegador). Ahora pasa por un pequeño "intermediario" (una función que corre
+en tu propio Netlify), así que la IA funcionará de forma fiable.
+
+IMPORTANTE: para que ese intermediario se despliegue, sube la CARPETA ENTERA
+(incluida la subcarpeta "netlify" y el archivo "netlify.toml"). No borres nada.
+
+PASO 1 — SUBIR A NETLIFY
+------------------------
+Opción A (recomendada, URL fija) — crea una cuenta gratis en netlify.com:
+  1. netlify.com → Sign up (gratis).
+  2. "Add new site" → "Deploy manually".
+  3. Arrastra ESTA carpeta entera (brosin-pwa).
+  4. Te da una URL fija (p.ej. https://algo.netlify.app). Para actualizar en el
+     futuro, entra a ese mismo sitio → "Deploys" → arrastra la carpeta otra vez.
+     Así la URL NO cambia y no pierdes ni la clave ni los datos.
+
+Opción B (rápida, sin cuenta) — app.netlify.com/drop y arrastra la carpeta.
+  (Ojo: cada subida da URL nueva; perderás clave y datos de la anterior.)
+
+PASO 2 — INSTALAR EN EL MÓVIL
+-----------------------------
+Abre tu URL en el móvil:
+  iPhone (Safari):  Compartir → "Añadir a pantalla de inicio".
+  Android (Chrome): menú (⋮) → "Instalar aplicación".
+
+PASO 3 — ACTIVAR LA IA
+----------------------
+1. En console.anthropic.com crea una clave (API Keys → Create Key). Cópiala
+   ENTERA (empieza por sk-ant-api03- y es larga).
+2. Compra saldo: Settings → Billing → Buy credits (aunque sea 5 $).
+3. En la app: Perfil → Conectar IA → pega la clave → "Probar y conectar".
+   Ahora la prueba pasa por el servidor y te dirá "¡Conectada!" o el motivo real.
+
+(Opcional, más seguro) Si tienes cuenta Netlify, puedes guardar la clave como
+variable de entorno del sitio llamada  ANTHROPIC_API_KEY  y así ni siquiera hace
+falta escribirla en la app.
+
+NOTAS
+-----
+- Tus datos viven en tu móvil. Haz "Copia de seguridad" en Perfil de vez en cuando.
+- Todo lo que no es IA funciona sin conexión.
+- ¿Dudas? Escríbeme y lo vemos.
+
+Bro, no te quedes sin.
