@@ -7,12 +7,12 @@ export default async (req) => {
   try { payload = await req.json(); } catch (e) {
     return new Response(JSON.stringify({ error: { message: "Bad JSON" } }), { status: 400, headers: { "Content-Type": "application/json" } });
   }
-  const { messages, system, model, max_tokens, key } = payload || {};
+  const { messages, system, max_tokens, key } = payload || {};
   const apiKey = key || process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return new Response(JSON.stringify({ error: { message: "No API key" } }), { status: 400, headers: { "Content-Type": "application/json" } });
   }
-  const body = { model: model || "claude-sonnet-4-20250514", max_tokens: max_tokens || 1200, messages: messages || [] };
+  const body = { model: "claude-sonnet-5", max_tokens: max_tokens || 1200, messages: messages || [] };
   if (system) body.system = system;
   try {
     const r = await fetch("https://api.anthropic.com/v1/messages", {
