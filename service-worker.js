@@ -1,5 +1,5 @@
-// Brosin OS — service worker (offline app shell + runtime cache)
-const CACHE = "brosin-os-v9";
+// Brosin OS — service worker (offline app shell + runtime cache + push)
+const CACHE = "brosin-os-v16";
 const LOCAL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 
 self.addEventListener("install", (e) => {
@@ -9,6 +9,40 @@ self.addEventListener("install", (e) => {
 
 self.addEventListener("activate", (e) => {
   e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
+});
+
+// ---- Push notifications (fire with the app closed / phone locked) ----
+self.addEventListener("push", (e) => {
+  e.waitUntil((async () => {
+    let items = [];
+    // If the push carried a payload, use it directly.
+    try { if (e.data) { const j = e.data.json(); if (j && j.items) items = j.items; else if (j && j.title) items = [j]; } } catch (err) {}
+    // Otherwise (payload-less push) fetch the pending reminders for this device.
+    if (!items.length) {
+      try {
+        const sub = await self.registration.pushManager.getSubscription();
+        if (sub) {
+          const r = await fetch("/api/pending", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ endpoint: sub.endpoint }) });
+          if (r.ok) { const j = await r.json(); items = (j && j.items) || []; }
+        }
+      } catch (err) {}
+    }
+    if (!items.length) items = [{ title: "Brosin", body: "Tienes un recordatorio pendiente." }];
+    for (const it of items.slice(0, 5)) {
+      await self.registration.showNotification(it.title || "Brosin", {
+        body: it.body || "", icon: "./icon-192.png", badge: "./icon-192.png",
+        tag: it.tag || undefined, renotify: true, data: { url: "./" },
+      });
+    }
+  })());
+});
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  e.waitUntil((async () => {
+    const all = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const c of all) { if ("focus" in c) return c.focus(); }
+    if (self.clients.openWindow) return self.clients.openWindow("./");
+  })());
 });
 
 self.addEventListener("fetch", (e) => {
