@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
 <title>Brosin OS</title>
 <meta name="description" content="Tu segundo cerebro. Bro, no te quedes sin." />
-<meta name="brosin-build" content="v14" />
+<meta name="brosin-build" content="v19" />
 <meta name="theme-color" content="#0d0d0d" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
@@ -40,6 +40,8 @@
   // Cloud sync (Supabase) — publishable key is safe to embed (protected by Row-Level Security)
   window.__SB_URL = "https://xjawjkrgxdhxanwtjcpb.supabase.co";
   window.__SB_KEY = "sb_publishable_cc5n2vvUF6SeLcGEz7DgOg_R_b54kJd";
+  // Push notifications: VAPID public key (safe to embed; it's the public half)
+  window.__VAPID_PUBLIC = "BIU_VfkgQ5nh9VYOZrIvMaWFPFc1NmSJwy5nGRjRQQ-1aavXArXnBjHaa4vwJNumrNR-1zvgSVLqhy19BUO_734";
   // Local persistence shim so the app's window.storage works on-device (no Claude sandbox here)
   window.storage = {
     get: async function(k){ try { var v = localStorage.getItem("brosin:"+k); return v ? JSON.parse(v) : null; } catch(e){ return null; } },
@@ -55,13 +57,14 @@
 <div id="root">
   <div id="splash">
     <img class="bl" src="./brosin_logo.png" alt="Brosin" />
-    <div class="s">Despertando la colmena… · v14</div>
+    <div class="s">Despertando la colmena… · v19</div>
     <div class="l"></div>
   </div>
 </div>
 <script type="module">
 import { createRoot } from "react-dom/client";
 import React, { useReducer, useEffect, useState, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { Home, CalendarDays, Wallet, Package, Brain, Plus, Check, X, Target, TrendingUp, TrendingDown, HandCoins, Boxes, Pin, Trash2, ChevronRight, ChevronLeft, Lock, Sparkles, Send, Clock, ArrowUpRight, ArrowDownRight, Coins, Landmark, Gift, Pencil, Star, Flag, Delete, RefreshCcw, Settings, Moon, Camera, BarChart3, BellRing, Maximize2, PieChart, Car, Smartphone, Activity, MessageCircle, Power, LineChart, ArrowUp, ArrowDown, Copy, Zap, Users, Share2, Download, UserPlus, Mic, Volume2, Calculator, Utensils, Receipt, Square, Lightbulb, Cake, Quote, } from "lucide-react";
 /* ============================================================
    BROSIN OS — Tu segundo cerebro
@@ -93,6 +96,7 @@ const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const nowISO = () => new Date().toISOString();
 const money = (n) => (Number(n) || 0).toLocaleString("es-ES", { style: "currency", currency: "EUR", maximumFractionDigits: 2 });
+const shortEur = (n) => { n = Number(n) || 0; const a = Math.abs(n); return a >= 1000 ? (n / 1000).toFixed(a >= 10000 ? 0 : 1).replace(".", ",") + "k€" : Math.round(n) + "€"; };
 const fmtDate = (iso) => {
     if (!iso)
         return "";
@@ -100,6 +104,17 @@ const fmtDate = (iso) => {
     return d.toLocaleDateString("es-ES", { weekday: "short", day: "numeric", month: "short" });
 };
 const fmtLong = (d = new Date()) => d.toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" });
+const fmtDateTime = (iso) => {
+    if (!iso)
+        return "";
+    try {
+        const d = new Date(iso);
+        return d.toLocaleDateString("es-ES", { day: "numeric", month: "short" }) + " · " + d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+    }
+    catch (e) {
+        return "";
+    }
+};
 const sameDay = (iso, ref) => iso && iso.slice(0, 10) === ref;
 const daysFromNow = (iso) => {
     if (!iso)
@@ -210,12 +225,17 @@ const encodeBackup = (obj) => { try {
 catch (e) {
     return "";
 } };
-const decodeBackup = (str) => { try {
-    return JSON.parse(decodeURIComponent(escape(atob(String(str).trim().replace(/^BRSNBAK1:/, "")))));
-}
-catch (e) {
-    return null;
-} };
+const decodeBackup = (str) => {
+    try {
+        // Strip the prefix AND every whitespace/newline — copied codes often get
+        // line-wrapped by chat apps, which used to break the restore silently.
+        const clean = String(str).trim().replace(/^BRSNBAK1:/, "").replace(/\s+/g, "");
+        return JSON.parse(decodeURIComponent(escape(atob(clean))));
+    }
+    catch (e) {
+        return null;
+    }
+};
 function downloadFile(name, text, type = "application/json") {
     try {
         const blob = new Blob([text], { type });
@@ -223,9 +243,63 @@ function downloadFile(name, text, type = "application/json") {
         const a = document.createElement("a");
         a.href = url;
         a.download = name;
+        a.rel = "noopener";
         document.body.appendChild(a);
         a.click();
-        setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1200);
+        setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1500);
+        return true;
+    }
+    catch (e) {
+        return false;
+    }
+}
+// Installed iOS PWAs ignore <a download> (they open the file inline instead of
+// saving it) — that's why "descargar" seemed broken on the phone. The iOS share
+// sheet ("Guardar en Archivos") is the reliable path, so try it first, then fall
+// back to a real download, then to opening the data. Returns how it was saved.
+async function saveBackup(name, text, type = "application/json") {
+    try {
+        if (typeof navigator !== "undefined" && navigator.canShare && typeof File !== "undefined") {
+            const file = new File([text], name, { type });
+            if (navigator.canShare({ files: [file] })) {
+                await navigator.share({ files: [file], title: "Copia de seguridad Brosin" });
+                return "shared";
+            }
+        }
+    }
+    catch (e) {
+        if (e && e.name === "AbortError")
+            return "cancel"; // user closed the share sheet — fine
+    }
+    if (downloadFile(name, text, type))
+        return "download";
+    try {
+        window.open("data:" + type + ";charset=utf-8," + encodeURIComponent(text), "_blank");
+        return "open";
+    }
+    catch (e) { }
+    return "fail";
+}
+/* ---------- automatic rolling snapshots (local safety net) ----------
+   Keeps the last few full states in local storage so a bad sync, a wipe or a
+   failed restore can always be rolled back. Written throttled from the root. */
+const AUTOBAK_KEY = "brosin_autobak_v1";
+async function readAutoBaks() { try {
+    const a = await store.get(AUTOBAK_KEY);
+    return Array.isArray(a) ? a : [];
+}
+catch (e) {
+    return [];
+} }
+async function writeAutoBak(persist) {
+    try {
+        if (!persist || typeof persist !== "object")
+            return;
+        const arr = await readAutoBaks();
+        if (arr[0] && JSON.stringify(arr[0].data) === JSON.stringify(persist))
+            return; // no change → skip dupe
+        const next = [{ at: nowISO(), data: persist }, ...arr].slice(0, 6);
+        await store.set(AUTOBAK_KEY, next);
     }
     catch (e) { }
 }
@@ -233,6 +307,8 @@ const countData = (d) => ({
     Eventos: (d.events || []).length,
     Movimientos: (d.tx || []).length,
     Colecciones: (d.collections || []).length,
+    Empresas: (d.orgs || []).length,
+    Compartidas: (d.sharedInv || []).length,
     Objetivos: (d.goals || []).length,
     Notas: (d.notes || []).length,
     Proyectos: (d.teamProjects || []).length,
@@ -352,6 +428,104 @@ async function cloudSave(sb, userId, data) {
     try {
         const { error } = await sb.from("app_state").upsert({ user_id: userId, data, updated_at: new Date().toISOString() });
         return !error;
+    }
+    catch (e) {
+        return false;
+    }
+}
+/* ---------- Push notifications (avisos con la app cerrada) ---------- */
+const pushSupported = () => typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window && typeof Notification !== "undefined";
+function urlBase64ToUint8Array(base64String) {
+    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const raw = atob(base64);
+    const arr = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++)
+        arr[i] = raw.charCodeAt(i);
+    return arr;
+}
+async function enablePush(sb, userId) {
+    if (!pushSupported())
+        return { ok: false, reason: "unsupported" };
+    const vapid = typeof window !== "undefined" ? window.__VAPID_PUBLIC : null;
+    if (!vapid)
+        return { ok: false, reason: "novapid" };
+    let perm = Notification.permission;
+    if (perm !== "granted")
+        perm = await Notification.requestPermission();
+    if (perm !== "granted")
+        return { ok: false, reason: "denied" };
+    try {
+        const reg = await navigator.serviceWorker.ready;
+        let subObj = await reg.pushManager.getSubscription();
+        if (!subObj)
+            subObj = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(vapid) });
+        const j = subObj.toJSON();
+        const { error } = await sb.from("push_subs").upsert({ user_id: userId, endpoint: subObj.endpoint, sub: j }, { onConflict: "endpoint" });
+        if (error)
+            return { ok: false, reason: "save", detail: error.message };
+        return { ok: true };
+    }
+    catch (e) {
+        return { ok: false, reason: "sub", detail: String(e) };
+    }
+}
+const nextBirthdayDate = (bday) => {
+    const parts = String(bday || "").split("-");
+    const mm = Number(parts.length === 3 ? parts[1] : parts[0]);
+    const dd = Number(parts.length === 3 ? parts[2] : parts[1]);
+    if (!mm || !dd)
+        return null;
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    let nb = new Date(now.getFullYear(), mm - 1, dd);
+    if (nb < now)
+        nb = new Date(now.getFullYear() + 1, mm - 1, dd);
+    return nb;
+};
+function computeReminders(state) {
+    const out = [];
+    const now = Date.now();
+    const horizon = now + 45 * 24 * 3600 * 1000;
+    const push = (rkey, fire, title, body) => { const t = fire.getTime(); if (t > now + 30000 && t < horizon)
+        out.push({ rkey, fire_at: fire, title, body: body || "" }); };
+    (state.events || []).forEach((e) => {
+        if (e.done || e.remind === false)
+            return;
+        const dt = eventDate(e);
+        if (!dt)
+            return;
+        const start = dt.getTime();
+        const leads = (e.lead != null) ? (e.lead === 0 ? [0] : [e.lead, 0]) : [1440, 60, 0];
+        leads.forEach((lead) => push(`ev:${e.id}:${lead}`, new Date(start - lead * 60000), lead === 0 ? `Ahora: ${e.title}` : `Pronto: ${e.title}`, `${fmtDate(e.date)}${e.time ? ` · ${e.time}` : ""}`));
+    });
+    (state.people || []).forEach((p) => {
+        if (p.remind === false || !p.birthday)
+            return;
+        const nb = nextBirthdayDate(p.birthday);
+        if (!nb)
+            return;
+        [7, 1, 0].forEach((d) => { const fire = new Date(nb.getTime() - d * 24 * 3600 * 1000); fire.setHours(9, 0, 0, 0); push(`bd:${p.id}:${d}`, fire, d === 0 ? `🎂 Hoy cumple ${p.name}` : d === 1 ? `🎂 Mañana cumple ${p.name}` : `🎂 ${p.name} cumple en ${d} días`, (p.giftIdeas || []).some((g) => !g.done) ? "Tienes ideas de regalo apuntadas" : "Prepárale un detalle"); });
+    });
+    (state.goals || []).forEach((g) => {
+        if (!g.deadline || g.notif === false)
+            return;
+        if (g.steps && g.steps.length && g.steps.every((s) => s.done))
+            return;
+        [3, 1, 0].forEach((d) => { const gd = new Date(g.deadline + "T09:00:00"); if (isNaN(gd.getTime()))
+            return; push(`gl:${g.id}:${d}`, new Date(gd.getTime() - d * 24 * 3600 * 1000), d === 0 ? `Hoy es la meta: ${g.title}` : `Se acerca: ${g.title}`, g.why ? "Recuerda: " + g.why : "A por ello."); });
+    });
+    return out;
+}
+async function syncReminders(sb, userId, state) {
+    try {
+        const items = computeReminders(state);
+        await sb.from("reminders").delete().eq("user_id", userId).eq("sent", false).gt("fire_at", new Date().toISOString());
+        const rows = items.map((it) => ({ user_id: userId, rkey: it.rkey, fire_at: it.fire_at.toISOString(), title: it.title, body: it.body }));
+        for (let i = 0; i < rows.length; i += 100) {
+            await sb.from("reminders").insert(rows.slice(i, i + 100));
+        }
+        return true;
     }
     catch (e) {
         return false;
@@ -670,6 +844,7 @@ const EMPTY = {
     debts: [],
     investments: [],
     collections: [],
+    orgs: [],
     fiados: [],
     goals: [],
     notes: [],
@@ -749,10 +924,14 @@ function Title({ kicker, children, accent = C.yellow }) {
             } }, children)));
 }
 function FAB({ onClick, label = "Añadir" }) {
-    return (React.createElement("button", { onClick: onClick, style: {
-            position: "absolute",
-            right: 18,
-            bottom: 88,
+    // Rendered through a portal to <body> so it escapes the app's inner scroll
+    // container. Inside that scroller iOS treats position:fixed like absolute and
+    // the button "gets stuck in the middle". At body level it truly pins to the
+    // viewport, bottom-right of the centered 440px phone frame.
+    const node = (React.createElement("button", { onClick: onClick, style: {
+            position: "fixed",
+            right: "max(18px, calc((100vw - 440px) / 2 + 18px))",
+            bottom: "calc(84px + env(safe-area-inset-bottom))",
             height: 56,
             paddingInline: 20,
             borderRadius: 999,
@@ -766,11 +945,12 @@ function FAB({ onClick, label = "Añadir" }) {
             gap: 8,
             boxShadow: "0 10px 30px rgba(255,212,0,.35)",
             cursor: "pointer",
-            zIndex: 30,
+            zIndex: 60,
         } },
         React.createElement(Plus, { size: 20, strokeWidth: 3 }),
         " ",
         label));
+    return typeof document !== "undefined" && document.body ? createPortal(node, document.body) : node;
 }
 function LoadingPulse({ lines = 3 }) {
     return (React.createElement("div", { style: { display: "grid", gap: 10 } }, Array.from({ length: lines }).map((_, i) => (React.createElement("div", { key: i, style: {
@@ -803,24 +983,30 @@ function EmptyState({ title, sub, face = "sleep", cta, onCta }) {
 function Sheet({ open, onClose, title, children }) {
     if (!open)
         return null;
-    return (React.createElement("div", { onClick: onClose, style: {
-            position: "absolute",
+    // Portaled to <body> with position:fixed so it always covers the real
+    // viewport and pins to its bottom, regardless of how far the page is
+    // scrolled (the old position:absolute anchored to the scroll-top and made
+    // the panel appear "stuck in the middle" after scrolling down).
+    const node = (React.createElement("div", { onClick: onClose, style: {
+            position: "fixed",
             inset: 0,
             background: "rgba(0,0,0,.6)",
-            zIndex: 50,
+            zIndex: 80,
             display: "flex",
             alignItems: "flex-end",
+            justifyContent: "center",
             backdropFilter: "blur(2px)",
             animation: "bfade .18s ease",
         } },
         React.createElement("div", { onClick: (e) => e.stopPropagation(), style: {
                 width: "100%",
+                maxWidth: 440,
                 background: C.ink2,
                 borderTopLeftRadius: 28,
                 borderTopRightRadius: 28,
                 borderTop: `1px solid ${C.line}`,
-                padding: "16px 18px 22px",
-                maxHeight: "86%",
+                padding: "16px 18px calc(22px + env(safe-area-inset-bottom))",
+                maxHeight: "86vh",
                 overflowY: "auto",
                 animation: "bsheet .26s cubic-bezier(.2,.9,.3,1)",
             } },
@@ -830,6 +1016,7 @@ function Sheet({ open, onClose, title, children }) {
                 React.createElement("button", { onClick: onClose, style: iconBtn },
                     React.createElement(X, { size: 18 }))),
             children)));
+    return typeof document !== "undefined" && document.body ? createPortal(node, document.body) : node;
 }
 const iconBtn = {
     background: C.ink3,
@@ -926,7 +1113,7 @@ function Thumb({ src, size = 44, radius = 11 }) {
 function Lightbox({ src, onClose }) {
     if (!src)
         return null;
-    return (React.createElement("div", { onClick: onClose, style: { position: "absolute", inset: 0, background: "rgba(0,0,0,.92)", zIndex: 70, display: "grid", placeItems: "center", padding: 20, animation: "bfade .2s ease" } },
+    return (React.createElement("div", { onClick: onClose, style: { position: "absolute", inset: 0, background: "rgba(0,0,0,.92)", zIndex: 90, display: "grid", placeItems: "center", padding: 20, animation: "bfade .2s ease" } },
         React.createElement("img", { src: src, alt: "", style: { maxWidth: "100%", maxHeight: "84%", borderRadius: 18, objectFit: "contain" } }),
         React.createElement("button", { onClick: onClose, style: { ...iconBtn, position: "absolute", top: 18, right: 18 } },
             React.createElement(X, { size: 20 }))));
@@ -1108,14 +1295,26 @@ function MonthlyBars({ tx }) {
         gas: tx.filter((x) => x.type === "gasto" && (x.date || "").slice(0, 7) === m.key).reduce((s, x) => s + Number(x.amount || 0), 0),
     }));
     const max = Math.max(1, ...data.map((d) => Math.max(d.ing, d.gas)));
+    const totIng = data.reduce((s, d) => s + d.ing, 0);
+    const totGas = data.reduce((s, d) => s + d.gas, 0);
+    const net = totIng - totGas;
     return (React.createElement("div", { style: { ...card, padding: 16 } },
-        React.createElement(ChartHead, { icon: BarChart3, title: "Ingresos vs gastos", sub: "\u00DAltimos 6 meses" }),
-        React.createElement("div", { style: { display: "flex", alignItems: "flex-end", gap: 10, height: 130, marginTop: 6 } }, data.map((d) => (React.createElement("div", { key: d.key, style: { flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 5 } },
-            React.createElement("div", { style: { display: "flex", gap: 3, alignItems: "flex-end", height: 100, width: "100%", justifyContent: "center" } },
-                React.createElement("div", { title: `Ingresos ${money(d.ing)}`, style: { width: "42%", height: `${Math.max(2, (d.ing / max) * 100)}%`, background: C.good, borderRadius: "5px 5px 0 0", transition: "height .5s" } }),
-                React.createElement("div", { title: `Gastos ${money(d.gas)}`, style: { width: "42%", height: `${Math.max(2, (d.gas / max) * 100)}%`, background: C.bad, borderRadius: "5px 5px 0 0", transition: "height .5s" } })),
-            React.createElement("span", { style: { fontSize: 10.5, color: C.textLo, textTransform: "capitalize" } }, d.label))))),
-        React.createElement(Legend, { items: [{ c: C.good, l: "Ingresos" }, { c: C.bad, l: "Gastos" }] })));
+        React.createElement(ChartHead, { icon: BarChart3, title: "Ingresos vs gastos", sub: `Neto ${net >= 0 ? "+" : ""}${money(net)}` }),
+        React.createElement("div", { style: { position: "relative", marginTop: 10 } },
+            React.createElement("div", { style: { position: "absolute", left: 0, right: 0, top: 52, height: 1, background: C.line, opacity: 0.5 } }),
+            React.createElement("div", { style: { display: "flex", alignItems: "flex-end", gap: 10, height: 132, position: "relative" } }, data.map((d) => {
+                const mNet = d.ing - d.gas;
+                return (React.createElement("div", { key: d.key, style: { flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 } },
+                    React.createElement("div", { style: { display: "flex", gap: 3, alignItems: "flex-end", height: 104, width: "100%", justifyContent: "center" } },
+                        React.createElement("div", { title: `Ingresos ${money(d.ing)}`, style: { width: "42%", height: `${Math.max(2, (d.ing / max) * 100)}%`, background: `linear-gradient(180deg,${C.good},#2ba866)`, borderRadius: "5px 5px 0 0", transition: "height .5s" } }),
+                        React.createElement("div", { title: `Gastos ${money(d.gas)}`, style: { width: "42%", height: `${Math.max(2, (d.gas / max) * 100)}%`, background: `linear-gradient(180deg,#ff7a7a,${C.bad})`, borderRadius: "5px 5px 0 0", transition: "height .5s" } })),
+                    React.createElement("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", lineHeight: 1.15 } },
+                        React.createElement("span", { style: { fontSize: 10.5, color: C.textLo, textTransform: "capitalize", fontWeight: 700 } }, d.label),
+                        (d.ing || d.gas) ? React.createElement("span", { style: { fontSize: 9.5, color: mNet >= 0 ? C.good : C.bad, fontWeight: 700 } },
+                            mNet >= 0 ? "+" : "−",
+                            money(Math.abs(mNet)).replace("−", "")) : null)));
+            }))),
+        React.createElement(Legend, { items: [{ c: C.good, l: `Ingresos · ${money(totIng)}` }, { c: C.bad, l: `Gastos · ${money(totGas)}` }] })));
 }
 function CategoryDonut({ tx }) {
     const cats = {};
@@ -1138,11 +1337,14 @@ function CategoryDonut({ tx }) {
                     offset += dash;
                     return el;
                 }),
-                React.createElement("text", { x: "65", y: "70", textAnchor: "middle", fill: C.textHi, fontSize: "15", fontWeight: "800" }, entries.length)),
-            React.createElement("div", { style: { flex: 1, display: "grid", gap: 6 } }, entries.map(([k, v], i) => (React.createElement("div", { key: k, style: { display: "flex", alignItems: "center", gap: 8 } },
+                React.createElement("text", { x: "65", y: "60", textAnchor: "middle", fill: C.textLo, fontSize: "8.5", fontWeight: "700", letterSpacing: "0.5" }, "TOTAL"),
+                React.createElement("text", { x: "65", y: "74", textAnchor: "middle", fill: C.textHi, fontSize: "14", fontWeight: "900" }, shortEur(total))),
+            React.createElement("div", { style: { flex: 1, display: "grid", gap: 7 } }, entries.map(([k, v], i) => (React.createElement("div", { key: k, style: { display: "flex", alignItems: "center", gap: 8 } },
                 React.createElement("span", { style: { width: 9, height: 9, borderRadius: 3, background: SLICE[i % SLICE.length], flexShrink: 0 } }),
-                React.createElement("span", { style: { color: C.textHi, fontSize: 12.5, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, k),
-                React.createElement("span", { style: { color: C.textLo, fontSize: 12, fontWeight: 700 } },
+                React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                    React.createElement("div", { style: { color: C.textHi, fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, k),
+                    React.createElement("div", { style: { color: C.textLo, fontSize: 10.5 } }, money(v))),
+                React.createElement("span", { style: { color: C.textLo, fontSize: 12.5, fontWeight: 800 } },
                     Math.round((v / total) * 100),
                     "%"))))))));
 }
@@ -1163,15 +1365,21 @@ function BalanceLine({ tx }) {
     const line = coords.map((c, i) => `${i ? "L" : "M"}${c[0].toFixed(1)} ${c[1].toFixed(1)}`).join(" ");
     const area = `${line} L${coords[coords.length - 1][0].toFixed(1)} ${H} L${coords[0][0].toFixed(1)} ${H} Z`;
     const up = pts[pts.length - 1] >= 0;
+    const last = coords[coords.length - 1];
+    const zeroY = H - pad - ((0 - min) / span) * (H - pad * 2);
+    const lastXpct = (last[0] / W) * 100, lastYpct = (last[1] / H) * 100;
     return (React.createElement("div", { style: { ...card, padding: 16 } },
         React.createElement(ChartHead, { icon: TrendingUp, title: "Evoluci\u00F3n del balance", sub: money(pts[pts.length - 1]) }),
-        React.createElement("svg", { width: "100%", viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: "none", style: { marginTop: 6, display: "block" } },
-            React.createElement("defs", null,
-                React.createElement("linearGradient", { id: "bgrad", x1: "0", y1: "0", x2: "0", y2: "1" },
-                    React.createElement("stop", { offset: "0%", stopColor: up ? C.good : C.bad, stopOpacity: "0.35" }),
-                    React.createElement("stop", { offset: "100%", stopColor: up ? C.good : C.bad, stopOpacity: "0" }))),
-            React.createElement("path", { d: area, fill: "url(#bgrad)" }),
-            React.createElement("path", { d: line, fill: "none", stroke: up ? C.good : C.bad, strokeWidth: "2.5", strokeLinejoin: "round", strokeLinecap: "round" }))));
+        React.createElement("div", { style: { position: "relative", marginTop: 6 } },
+            React.createElement("svg", { width: "100%", viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: "none", style: { display: "block", height: 96 } },
+                React.createElement("defs", null,
+                    React.createElement("linearGradient", { id: "bgrad", x1: "0", y1: "0", x2: "0", y2: "1" },
+                        React.createElement("stop", { offset: "0%", stopColor: up ? C.good : C.bad, stopOpacity: "0.35" }),
+                        React.createElement("stop", { offset: "100%", stopColor: up ? C.good : C.bad, stopOpacity: "0" }))),
+                min < 0 && React.createElement("line", { x1: pad, x2: W - pad, y1: zeroY, y2: zeroY, stroke: C.line, strokeWidth: "1", strokeDasharray: "3 3", vectorEffect: "non-scaling-stroke" }),
+                React.createElement("path", { d: area, fill: "url(#bgrad)" }),
+                React.createElement("path", { d: line, fill: "none", stroke: up ? C.good : C.bad, strokeWidth: "2.5", strokeLinejoin: "round", strokeLinecap: "round", vectorEffect: "non-scaling-stroke" })),
+            React.createElement("div", { style: { position: "absolute", left: `${lastXpct}%`, top: `${lastYpct}%`, width: 9, height: 9, borderRadius: 999, background: up ? C.good : C.bad, transform: "translate(-50%,-50%)", boxShadow: `0 0 0 3px ${up ? "rgba(61,220,132,.2)" : "rgba(255,92,92,.2)"}` } }))));
 }
 function HBars({ title, sub, icon, data, accent = C.purple }) {
     const max = Math.max(1, ...data.map((d) => d.value));
@@ -1200,7 +1408,7 @@ function Legend({ items }) {
 }
 /* in-app toasts */
 function Toasts({ items, onDismiss }) {
-    return (React.createElement("div", { style: { position: "absolute", left: 0, right: 0, bottom: "calc(84px + env(safe-area-inset-bottom))", zIndex: 65, padding: "0 12px", display: "grid", gap: 8, pointerEvents: "none" } }, items.map((t) => React.createElement(ToastItem, { key: t.id, t: t, onDismiss: onDismiss }))));
+    return (React.createElement("div", { style: { position: "absolute", left: 0, right: 0, bottom: "calc(84px + env(safe-area-inset-bottom))", zIndex: 90, padding: "0 12px", display: "grid", gap: 8, pointerEvents: "none" } }, items.map((t) => React.createElement(ToastItem, { key: t.id, t: t, onDismiss: onDismiss }))));
 }
 function ToastItem({ t, onDismiss }) {
     const [dx, setDx] = useState(0);
@@ -1273,7 +1481,7 @@ function LockScreen({ mode, onUnlock, onSet }) {
     };
     const del = () => setPin((p) => p.slice(0, -1));
     const label = mode === "set" ? (confirm === null ? "Crea tu PIN" : "Repite el PIN") : "Hola otra vez";
-    return (React.createElement("div", { style: { position: "absolute", inset: 0, background: C.ink, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 60 } },
+    return (React.createElement("div", { style: { position: "absolute", inset: 0, background: C.ink, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24, zIndex: 95 } },
         React.createElement("div", { style: { animation: shake ? "bshake .4s" : "bfloat 3.5s ease-in-out infinite" } },
             React.createElement(BrosinLogo, { height: 120 })),
         React.createElement("div", { style: { color: C.textLo, fontSize: 13, marginTop: 18 } }, label),
@@ -1321,7 +1529,7 @@ function Onboarding({ onDone }) {
         const people = ppl.filter((p) => p.name.trim()).map((p) => ({ id: uid(), name: p.name.trim(), birthday: p.birthday || "", relation: "", giftIdeas: [], remind: true }));
         onDone({ name: name.trim() || "Bro", focus, created: nowISO() }, people);
     };
-    return (React.createElement("div", { style: { position: "absolute", inset: 0, background: C.ink, zIndex: 55, display: "flex", flexDirection: "column", padding: "26px 22px", paddingTop: "calc(26px + env(safe-area-inset-top))" } },
+    return (React.createElement("div", { style: { position: "absolute", inset: 0, background: C.ink, zIndex: 95, display: "flex", flexDirection: "column", padding: "26px 22px", paddingTop: "calc(26px + env(safe-area-inset-top))" } },
         React.createElement("div", { style: { display: "flex", gap: 6, marginBottom: 28 } }, steps.map((_, i) => (React.createElement("div", { key: i, style: { flex: 1, height: 5, borderRadius: 999, background: i <= step ? C.yellow : C.line, transition: "all .3s" } })))),
         React.createElement("div", { key: step, style: { flex: 1, animation: "bslide .35s ease" } },
             step === 0 && (React.createElement("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", marginTop: 30 } },
@@ -1379,77 +1587,178 @@ function Onboarding({ onDone }) {
 /* ============================================================
    HOME / HOY
    ============================================================ */
+/* Anillo del día — progreso de hoy (agenda + hábitos) estilo Apple Activity */
+function RingLegend({ color, label, done, total }) {
+    return (React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+        React.createElement("span", { style: { width: 9, height: 9, borderRadius: 999, background: color, flexShrink: 0 } }),
+        React.createElement("span", { style: { color: C.textHi, fontSize: 13, fontWeight: 700, flex: 1 } }, label),
+        React.createElement("span", { style: { color: total ? C.textHi : C.textLo, fontSize: 13, fontWeight: 800 } }, total ? `${done}/${total}` : "—")));
+}
+function DayRing({ state, todayL }) {
+    const t = todayISO();
+    const evs = (state.events || []).filter((e) => sameDay(e.date, todayL));
+    const evTotal = evs.length, evDone = evs.filter((e) => e.done).length;
+    const habits = state.habits || [];
+    const hbTotal = habits.length, hbDone = habits.filter((h) => (h.done || []).includes(t)).length;
+    const totalItems = evTotal + hbTotal;
+    if (totalItems === 0) {
+        return (React.createElement("div", { style: { ...card, padding: 16, marginBottom: 14, display: "flex", alignItems: "center", gap: 12 } },
+            React.createElement("div", { style: { width: 44, height: 44, borderRadius: 13, background: C.ink3, display: "grid", placeItems: "center", flexShrink: 0 } },
+                React.createElement(Target, { size: 20, color: C.yellow })),
+            React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                React.createElement("div", { style: { color: C.textHi, fontWeight: 800, fontSize: 14.5 } }, "Tu d\u00EDa, en un anillo"),
+                React.createElement("div", { style: { color: C.textLo, fontSize: 12.5, marginTop: 2, lineHeight: 1.4 } }, "A\u00F1ade un evento o marca un h\u00E1bito y ver\u00E1s tu progreso llenarse."))));
+    }
+    const evFrac = evTotal ? evDone / evTotal : 0;
+    const hbFrac = hbTotal ? hbDone / hbTotal : 0;
+    const overall = Math.round(((evDone + hbDone) / totalItems) * 100);
+    const allDone = evDone + hbDone === totalItems;
+    const R1 = 50, R2 = 35, sw = 11;
+    const c1 = 2 * Math.PI * R1, c2 = 2 * Math.PI * R2;
+    const status = allDone ? "¡Día completado! 🐝" : overall >= 66 ? "Casi lo tienes" : overall >= 33 ? "Vas en marcha" : overall > 0 ? "Buen comienzo" : "Empieza tu día";
+    return (React.createElement("div", { style: { ...card, padding: 16, marginBottom: 14, background: "linear-gradient(135deg,#151515,#0f0f0f)" } },
+        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 16 } },
+            React.createElement("svg", { width: 122, height: 122, viewBox: "0 0 122 122", style: { flexShrink: 0 } },
+                React.createElement("circle", { cx: "61", cy: "61", r: R1, fill: "none", stroke: C.ink3, strokeWidth: sw }),
+                React.createElement("circle", { cx: "61", cy: "61", r: R2, fill: "none", stroke: C.ink3, strokeWidth: sw }),
+                evTotal > 0 && (React.createElement("circle", { cx: "61", cy: "61", r: R1, fill: "none", stroke: C.yellow, strokeWidth: sw, strokeLinecap: "round", strokeDasharray: `${(evFrac * c1).toFixed(1)} ${c1.toFixed(1)}`, transform: "rotate(-90 61 61)", style: { transition: "stroke-dasharray .6s cubic-bezier(.3,.9,.3,1)" } })),
+                hbTotal > 0 && (React.createElement("circle", { cx: "61", cy: "61", r: R2, fill: "none", stroke: C.purple, strokeWidth: sw, strokeLinecap: "round", strokeDasharray: `${(hbFrac * c2).toFixed(1)} ${c2.toFixed(1)}`, transform: "rotate(-90 61 61)", style: { transition: "stroke-dasharray .6s cubic-bezier(.3,.9,.3,1)" } })),
+                React.createElement("text", { x: "61", y: "58", textAnchor: "middle", fill: C.textHi, fontSize: "23", fontWeight: "900" },
+                    overall,
+                    "%"),
+                React.createElement("text", { x: "61", y: "74", textAnchor: "middle", fill: C.textLo, fontSize: "9", fontWeight: "700", letterSpacing: "0.5" }, "DE HOY")),
+            React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                React.createElement("div", { style: { color: C.textHi, fontWeight: 900, fontSize: 17, marginBottom: 10 } }, status),
+                React.createElement("div", { style: { display: "grid", gap: 9 } },
+                    React.createElement(RingLegend, { color: C.yellow, label: "Agenda", done: evDone, total: evTotal }),
+                    React.createElement(RingLegend, { color: C.purple, label: "H\u00E1bitos", done: hbDone, total: hbTotal }))))));
+}
+/* iOS-style segmented control with a fluid sliding highlight */
+function Segmented({ tabs, value, onChange }) {
+    const n = tabs.length;
+    const idx = Math.max(0, tabs.findIndex((t) => t.k === value));
+    return (React.createElement("div", { style: { position: "relative", display: "flex", background: C.ink, borderRadius: 999, padding: 4, border: `1px solid ${C.line}` } },
+        React.createElement("div", { style: { position: "absolute", top: 4, bottom: 4, left: `calc(4px + (100% - 8px) * ${idx} / ${n})`, width: `calc((100% - 8px) / ${n})`, background: C.yellow, borderRadius: 999, transition: "left .3s cubic-bezier(.3,.9,.3,1)", boxShadow: "0 4px 14px rgba(255,212,0,.28)" } }),
+        tabs.map((t) => (React.createElement("button", { key: t.k, onClick: () => onChange(t.k), style: { position: "relative", zIndex: 1, flex: 1, background: "none", border: "none", cursor: "pointer", padding: "9px 4px", fontWeight: 800, fontSize: 13.5, color: value === t.k ? C.ink : C.textLo, transition: "color .25s", whiteSpace: "nowrap" } }, t.label)))));
+}
+/* compact app-style tool button (icon tile + caption) */
+function ToolButton({ icon: Ico, label, accent, onClick, active }) {
+    return (React.createElement("button", { onClick: onClick, style: { background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 7, padding: "2px 0" } },
+        React.createElement("div", { style: { width: 54, height: 54, borderRadius: 17, background: active ? accent : C.ink2, display: "grid", placeItems: "center", border: `1px solid ${active ? accent : C.line}`, transition: "transform .15s" } },
+            React.createElement(Ico, { size: 22, color: active ? (accent === C.purple ? "#fff" : C.ink) : C.textHi })),
+        React.createElement("span", { style: { color: C.textLo, fontSize: 10.5, fontWeight: 600, textAlign: "center", lineHeight: 1.15 } }, label)));
+}
 function HomeScreen({ state, dispatch, go, ai, openMarkets, toast }) {
     var _a;
     const [calcOpen, setCalcOpen] = useState(false);
     const [ideaOpen, setIdeaOpen] = useState(false);
-    const t = todayISO();
-    const todays = state.events
-        .filter((e) => sameDay(e.date, t))
-        .sort((a, b) => (a.time || "").localeCompare(b.time || ""));
-    const upcoming = state.events
-        .filter((e) => !e.done && daysFromNow(e.date) > 0)
-        .sort((a, b) => a.date.localeCompare(b.date))
-        .slice(0, 3);
+    const [aiOpen, setAiOpen] = useState(false);
+    const [homeTab, setHomeTab] = useState("hoy"); // hoy | semana | vistazo
+    const pad = (n) => String(n).padStart(2, "0");
+    const localISO = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const now = new Date();
+    const todayL = localISO(now);
+    const evByDay = (iso) => state.events.filter((e) => sameDay(e.date, iso)).sort((a, b) => (a.time || "").localeCompare(b.time || ""));
+    const todays = evByDay(todayL);
+    const week = [];
+    for (let i = 0; i < 7; i++) {
+        const d = new Date(now);
+        d.setDate(now.getDate() + i);
+        week.push(d);
+    }
     const balance = state.tx.reduce((s, x) => s + (x.type === "ingreso" ? 1 : -1) * Number(x.amount || 0), 0);
     const owedToMe = state.debts.filter((d) => d.dir === "meDeben" && !d.settled).reduce((s, d) => s + Number(d.amount || 0), 0);
     const goalsActive = state.goals.filter((g) => g.steps.some((s) => !s.done)).length;
     const fiadosOut = state.fiados.filter((f) => !f.returned).length;
-    const hour = new Date().getHours();
+    const hour = now.getHours();
     const greet = hour < 6 ? "De madrugada" : hour < 14 ? "Buenos días" : hour < 21 ? "Buenas tardes" : "Buenas noches";
-    return (React.createElement("div", { style: { padding: "20px 18px 0" } },
-        React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 14, position: "relative" } },
-            React.createElement(BrosinLogo, { height: 52 }),
-            React.createElement("button", { onClick: () => go("perfil"), style: { ...iconBtn, position: "absolute", right: 0, top: "50%", transform: "translateY(-50%)" } },
-                React.createElement(Settings, { size: 18 }))),
+    const weekdayLong = now.toLocaleDateString("es-ES", { weekday: "long" });
+    const monthLong = now.toLocaleDateString("es-ES", { month: "long" });
+    const birthday = (state.people || []).map((p) => ({ p, d: daysUntilBirthday(p.birthday) })).filter((x) => x.d != null && x.d <= 10).sort((a, b) => a.d - b.d)[0];
+    const tabs = [{ k: "hoy", label: "Hoy" }, { k: "semana", label: "Semana" }, { k: "vistazo", label: "Vistazo" }];
+    return (React.createElement("div", { style: { padding: "18px 18px 0" } },
         React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 18 } },
-            React.createElement(BeeMark, { size: 46, face: "happy" }),
-            React.createElement("div", { style: { flex: 1 } },
+            React.createElement(BeeMark, { size: 40, face: "happy" }),
+            React.createElement("div", { style: { flex: 1, minWidth: 0 } },
                 React.createElement("div", { style: { color: C.textLo, fontSize: 12.5, fontWeight: 600 } },
                     greet,
                     ","),
-                React.createElement("div", { style: { color: C.textHi, fontSize: 21, fontWeight: 900, lineHeight: 1, textTransform: "capitalize" } }, state.profile.name || "Bro"))),
-        React.createElement("div", { style: { color: C.yellow, fontSize: 12, fontWeight: 800, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 14 } }, fmtLong()),
-        React.createElement(DailyQuote, null),
-        (() => {
-            const up = (state.people || []).map((p) => ({ p, d: daysUntilBirthday(p.birthday) })).filter((x) => x.d != null && x.d <= 10).sort((a, b) => a.d - b.d)[0];
-            if (!up)
-                return null;
-            const { p, d } = up;
-            return (React.createElement("button", { onClick: () => go("personas"), style: { ...card, width: "100%", textAlign: "left", padding: "12px 14px", marginBottom: 16, display: "flex", alignItems: "center", gap: 10, cursor: "pointer", borderColor: C.purple, background: "rgba(144,19,254,.08)" } },
-                React.createElement(Cake, { size: 18, color: C.purple }),
-                React.createElement("div", { style: { flex: 1 } },
-                    React.createElement("div", { style: { color: C.textHi, fontWeight: 800, fontSize: 13.5 } }, d === 0 ? `¡Hoy cumple ${p.name}!` : d === 1 ? `Mañana cumple ${p.name}` : `${p.name} cumple en ${d} días`),
-                    React.createElement("div", { style: { color: C.textLo, fontSize: 12 } }, (p.giftIdeas || []).some((g) => !g.done) ? "Tienes ideas de regalo pendientes" : "Prepara un detalle")),
-                React.createElement(ChevronRight, { size: 16, color: C.textLo })));
-        })(),
-        React.createElement(AiBrief, { ai: ai, state: state }),
-        React.createElement(HomeAI, { ai: ai, state: state, dispatch: dispatch, toast: toast }),
-        React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, margin: "16px 0" } },
-            React.createElement(StatCard, { label: "Balance", value: money(balance), icon: Wallet, accent: balance >= 0 ? C.good : C.bad, onClick: () => go("dinero") }),
-            React.createElement(StatCard, { label: "Te deben", value: money(owedToMe), icon: HandCoins, accent: C.yellow, onClick: () => go("dinero") }),
-            React.createElement(StatCard, { label: "Objetivos vivos", value: goalsActive, icon: Target, accent: C.purple, onClick: () => go("cerebro") }),
-            React.createElement(StatCard, { label: "Fiados fuera", value: fiadosOut, icon: Gift, accent: C.yellow, onClick: () => go("coleccion") })),
-        React.createElement("div", { style: { display: "flex", gap: 10, marginBottom: 18, overflowX: "auto", paddingBottom: 2 } },
-            React.createElement(ShortcutCard, { icon: Camera, label: "C\u00E1mara", accent: C.yellow, onClick: () => go("camara") }),
-            React.createElement(ShortcutCard, { icon: Cake, label: "Cumplea\u00F1os", accent: C.purple, onClick: () => go("personas") }),
-            React.createElement(ShortcutCard, { icon: Lightbulb, label: "Idea", accent: C.purple, onClick: () => setIdeaOpen(true) }),
-            React.createElement(ShortcutCard, { icon: Calculator, label: "Calculadora", accent: C.yellow, onClick: () => setCalcOpen(true) }),
-            React.createElement(ShortcutCard, { icon: Users, label: "Equipo", accent: C.purple, onClick: () => go("equipo") }),
-            React.createElement(ShortcutCard, { icon: Car, label: "Conducci\u00F3n", accent: C.purple, active: (_a = state.drive) === null || _a === void 0 ? void 0 : _a.active, onClick: () => go("conduccion") }),
-            React.createElement(ShortcutCard, { icon: Smartphone, label: "Pantalla", accent: C.yellow, onClick: () => go("pantalla") }),
-            React.createElement(ShortcutCard, { icon: LineChart, label: "Mercados", accent: C.yellow, onClick: openMarkets })),
-        React.createElement(SleepCard, { state: state, dispatch: dispatch, toast: toast }),
-        React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 } },
-            React.createElement("h3", { style: sectionH }, "Hoy"),
-            React.createElement("button", { onClick: () => go("agenda"), style: linkBtn },
-                "Ver agenda ",
-                React.createElement(ChevronRight, { size: 14 }))),
-        todays.length === 0 ? (React.createElement("div", { style: { ...card, padding: 18, textAlign: "center", color: C.textLo, fontSize: 13.5 } }, "D\u00EDa limpio. Ning\u00FAn evento para hoy \u2014 disfr\u00FAtalo o planifica algo.")) : (React.createElement("div", { style: { display: "grid", gap: 10 } }, todays.map((e) => (React.createElement(EventRow, { key: e.id, e: e, onToggle: () => dispatch({ type: "update", col: "events", id: e.id, patch: { done: !e.done } }) }))))),
-        upcoming.length > 0 && (React.createElement(React.Fragment, null,
-            React.createElement("h3", { style: { ...sectionH, marginTop: 22 } }, "Lo que viene"),
-            React.createElement("div", { style: { display: "grid", gap: 10 } }, upcoming.map((e) => (React.createElement(EventRow, { key: e.id, e: e, compact: true })))))),
+                React.createElement("div", { style: { color: C.textHi, fontSize: 20, fontWeight: 900, lineHeight: 1.05, textTransform: "capitalize", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, state.profile.name || "Bro")),
+            React.createElement("button", { onClick: () => go("perfil"), style: iconBtn },
+                React.createElement(Settings, { size: 18 }))),
+        React.createElement("div", { style: { marginBottom: 18 } },
+            React.createElement("div", { style: { color: C.yellow, fontSize: 11.5, fontWeight: 800, letterSpacing: 1.6, textTransform: "uppercase" } }, weekdayLong),
+            React.createElement("div", { style: { display: "flex", alignItems: "baseline", gap: 8, marginTop: 2 } },
+                React.createElement("span", { style: { color: C.textHi, fontSize: 32, fontWeight: 900, lineHeight: 1 } }, now.getDate()),
+                React.createElement("span", { style: { color: C.textHi, fontSize: 18, fontWeight: 700, textTransform: "capitalize" } },
+                    "de ",
+                    monthLong),
+                React.createElement("span", { style: { flex: 1 } }),
+                React.createElement("span", { style: { color: C.textLo, fontSize: 12.5, fontWeight: 600 } }, todays.length ? `${todays.length} evento${todays.length === 1 ? "" : "s"} hoy` : "día libre"))),
+        ai && (React.createElement("button", { onClick: () => setAiOpen(true), style: { ...card, width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", marginBottom: 16, cursor: "pointer", border: `1px solid ${C.purple}`, background: "linear-gradient(135deg,#160a24,#161616)", textAlign: "left" } },
+            React.createElement("div", { style: { width: 32, height: 32, borderRadius: 10, background: C.purple, display: "grid", placeItems: "center", flexShrink: 0 } },
+                React.createElement(Sparkles, { size: 16, color: "#fff" })),
+            React.createElement("span", { style: { flex: 1, color: C.textLo, fontSize: 13.5 } }, "Dile a Brosin y lo apunto\u2026"),
+            React.createElement(Mic, { size: 16, color: C.purple }))),
+        React.createElement(Segmented, { tabs: tabs, value: homeTab, onChange: setHomeTab }),
+        React.createElement("div", { style: { height: 16 } }),
+        React.createElement("div", { key: homeTab, style: { animation: "bfade .25s ease" } },
+            homeTab === "hoy" && (React.createElement(React.Fragment, null,
+                React.createElement(DayRing, { state: state, todayL: todayL }),
+                todays.length === 0 ? (React.createElement("div", { style: { ...card, padding: "30px 20px", textAlign: "center" } },
+                    React.createElement("div", { style: { display: "inline-block", marginBottom: 10, animation: "bfloat 3s ease-in-out infinite" } },
+                        React.createElement(BeeMark, { size: 50, face: "sleep", color: C.ink3 })),
+                    React.createElement("div", { style: { color: C.textHi, fontWeight: 800, fontSize: 16 } }, "D\u00EDa limpio"),
+                    React.createElement("div", { style: { color: C.textLo, fontSize: 13, marginTop: 4, maxWidth: 240, marginInline: "auto", lineHeight: 1.5 } }, "No tienes nada para hoy. Disfr\u00FAtalo o planifica algo."),
+                    React.createElement("button", { onClick: () => go("agenda"), style: { ...iconBtn, width: "auto", margin: "16px auto 0", paddingInline: 16, gap: 6, fontWeight: 800, fontSize: 13, background: C.yellow, color: C.ink, borderColor: C.yellow } },
+                        React.createElement(Plus, { size: 15, strokeWidth: 3 }),
+                        " Planificar"))) : (React.createElement("div", { style: { display: "grid", gap: 10 } }, todays.map((e) => (React.createElement(EventRow, { key: e.id, e: e, onToggle: () => dispatch({ type: "update", col: "events", id: e.id, patch: { done: !e.done } }) }))))),
+                React.createElement("h3", { style: { ...sectionH, fontSize: 13.5, margin: "22px 0 12px" } }, "Herramientas"),
+                React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12 } },
+                    React.createElement(ToolButton, { icon: Camera, label: "C\u00E1mara", accent: C.yellow, onClick: () => go("camara") }),
+                    React.createElement(ToolButton, { icon: Lightbulb, label: "Idea", accent: C.purple, onClick: () => setIdeaOpen(true) }),
+                    React.createElement(ToolButton, { icon: Calculator, label: "Calcular", accent: C.yellow, onClick: () => setCalcOpen(true) }),
+                    React.createElement(ToolButton, { icon: Cake, label: "Cumplea\u00F1os", accent: C.purple, onClick: () => go("personas") }),
+                    React.createElement(ToolButton, { icon: Users, label: "Equipo", accent: C.purple, onClick: () => go("equipo") }),
+                    React.createElement(ToolButton, { icon: LineChart, label: "Mercados", accent: C.yellow, onClick: openMarkets }),
+                    React.createElement(ToolButton, { icon: Car, label: "Conducci\u00F3n", accent: C.purple, active: (_a = state.drive) === null || _a === void 0 ? void 0 : _a.active, onClick: () => go("conduccion") }),
+                    React.createElement(ToolButton, { icon: Smartphone, label: "Pantalla", accent: C.yellow, onClick: () => go("pantalla") })))),
+            homeTab === "semana" && (React.createElement("div", null,
+                week.map((d) => {
+                    const iso = localISO(d);
+                    const evs = evByDay(iso);
+                    const isToday = iso === todayL;
+                    return (React.createElement("div", { key: iso, style: { marginBottom: 16 } },
+                        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 8 } },
+                            React.createElement("div", { style: { width: 42, textAlign: "center", flexShrink: 0 } },
+                                React.createElement("div", { style: { color: isToday ? C.yellow : C.textLo, fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.5 } }, d.toLocaleDateString("es-ES", { weekday: "short" }).replace(".", "")),
+                                React.createElement("div", { style: { color: isToday ? C.textHi : C.textLo, fontSize: 20, fontWeight: 900, lineHeight: 1 } }, d.getDate())),
+                            React.createElement("div", { style: { flex: 1, height: 1, background: C.line } }),
+                            isToday && React.createElement("span", { style: { color: C.ink, background: C.yellow, fontSize: 9.5, fontWeight: 800, borderRadius: 999, padding: "2px 8px", letterSpacing: 0.5 } }, "HOY")),
+                        evs.length === 0 ? (React.createElement("div", { style: { color: C.textLo, fontSize: 12.5, paddingLeft: 52, opacity: 0.55 } }, "Sin planes")) : (React.createElement("div", { style: { display: "grid", gap: 8, paddingLeft: 52 } }, evs.map((e) => (React.createElement(EventRow, { key: e.id, e: e, onToggle: () => dispatch({ type: "update", col: "events", id: e.id, patch: { done: !e.done } }) })))))));
+                }),
+                React.createElement("button", { onClick: () => go("agenda"), style: { ...iconBtn, width: "100%", height: 46, gap: 8, fontWeight: 800, fontSize: 13.5, background: C.ink2 } },
+                    React.createElement(CalendarDays, { size: 16 }),
+                    " Abrir agenda completa"))),
+            homeTab === "vistazo" && (React.createElement(React.Fragment, null,
+                ai && React.createElement("div", { style: { marginBottom: 14 } },
+                    React.createElement(AiBrief, { ai: ai, state: state })),
+                birthday && (React.createElement("button", { onClick: () => go("personas"), style: { ...card, width: "100%", textAlign: "left", padding: "12px 14px", marginBottom: 14, display: "flex", alignItems: "center", gap: 10, cursor: "pointer", borderColor: C.purple, background: "rgba(144,19,254,.08)" } },
+                    React.createElement(Cake, { size: 18, color: C.purple }),
+                    React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                        React.createElement("div", { style: { color: C.textHi, fontWeight: 800, fontSize: 13.5 } }, birthday.d === 0 ? `¡Hoy cumple ${birthday.p.name}!` : birthday.d === 1 ? `Mañana cumple ${birthday.p.name}` : `${birthday.p.name} cumple en ${birthday.d} días`),
+                        React.createElement("div", { style: { color: C.textLo, fontSize: 12 } }, (birthday.p.giftIdeas || []).some((g) => !g.done) ? "Tienes ideas de regalo pendientes" : "Prepara un detalle")),
+                    React.createElement(ChevronRight, { size: 16, color: C.textLo }))),
+                React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 } },
+                    React.createElement(StatCard, { label: "Balance", value: money(balance), icon: Wallet, accent: balance >= 0 ? C.good : C.bad, onClick: () => go("dinero") }),
+                    React.createElement(StatCard, { label: "Te deben", value: money(owedToMe), icon: HandCoins, accent: C.yellow, onClick: () => go("dinero") }),
+                    React.createElement(StatCard, { label: "Objetivos vivos", value: goalsActive, icon: Target, accent: C.purple, onClick: () => go("cerebro") }),
+                    React.createElement(StatCard, { label: "Fiados fuera", value: fiadosOut, icon: Gift, accent: C.yellow, onClick: () => go("coleccion") })),
+                React.createElement(SleepCard, { state: state, dispatch: dispatch, toast: toast }),
+                React.createElement(DailyQuote, null)))),
         React.createElement("div", { style: { height: 24 } }),
+        React.createElement(Sheet, { open: aiOpen, onClose: () => setAiOpen(false), title: "Dile a Brosin" },
+            React.createElement(HomeAI, { ai: ai, state: state, dispatch: dispatch, toast: toast })),
         React.createElement(Sheet, { open: calcOpen, onClose: () => setCalcOpen(false), title: "Calculadora" },
             React.createElement(Calc, null)),
         React.createElement(Sheet, { open: ideaOpen, onClose: () => setIdeaOpen(false), title: "Guardar una idea" },
@@ -2041,6 +2350,7 @@ function MonthView({ events, onPick, onAddDay }) {
 function MoneyScreen({ state, dispatch, tab, setTab, toast }) {
     const [sheet, setSheet] = useState(null); // 'tx' | 'debt' | 'inv'
     const [editInv, setEditInv] = useState(null);
+    const [editDebt, setEditDebt] = useState(null);
     const [chartDetail, setChartDetail] = useState(null);
     const [invPrices, setInvPrices] = useState({});
     // Live crypto prices for linked investments (fixes "el BTC sube y mi inversión no")
@@ -2113,21 +2423,7 @@ function MoneyScreen({ state, dispatch, tab, setTab, toast }) {
                 money(x.amount).replace("−", "")),
             React.createElement("button", { onClick: () => dispatch({ type: "remove", col: "tx", id: x.id }), style: { ...iconBtn, width: 30, height: 30, color: C.textLo } },
                 React.createElement(Trash2, { size: 14 }))))))),
-        tab === "deudas" && (React.createElement(Section, { empty: state.debts.length === 0, emptyT: "Cuentas claras", emptyS: "Registra qui\u00E9n te debe y a qui\u00E9n debes t\u00FA.", onAdd: () => setSheet("debt") }, state.debts.map((d) => (React.createElement("div", { key: d.id, style: { ...card, padding: "14px", opacity: d.settled ? 0.5 : 1 } },
-            React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
-                React.createElement("div", { style: { width: 38, height: 38, borderRadius: 11, background: d.dir === "meDeben" ? "rgba(61,220,132,.15)" : "rgba(255,92,92,.15)", display: "grid", placeItems: "center" } },
-                    React.createElement(HandCoins, { size: 18, color: d.dir === "meDeben" ? C.good : C.bad })),
-                React.createElement("div", { style: { flex: 1, minWidth: 0 } },
-                    React.createElement("div", { style: { color: C.textHi, fontWeight: 700, fontSize: 14.5 } }, d.person),
-                    React.createElement("div", { style: { color: C.textLo, fontSize: 12 } },
-                        d.dir === "meDeben" ? "Te debe" : "Le debes",
-                        " ",
-                        d.note ? `· ${d.note}` : "")),
-                React.createElement("div", { style: { color: d.dir === "meDeben" ? C.good : C.bad, fontWeight: 900, fontSize: 15 } }, money(d.amount))),
-            React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 10 } },
-                React.createElement("button", { onClick: () => dispatch({ type: "update", col: "debts", id: d.id, patch: { settled: !d.settled } }), style: miniBtn(d.settled ? C.line : C.yellow, d.settled ? C.textLo : C.ink) }, d.settled ? "Reabrir" : "Saldada"),
-                React.createElement("button", { onClick: () => dispatch({ type: "remove", col: "debts", id: d.id }), style: { ...iconBtn, width: 32, height: 32, color: C.textLo } },
-                    React.createElement(Trash2, { size: 14 })))))))),
+        tab === "deudas" && (React.createElement(Section, { empty: state.debts.length === 0, emptyT: "Cuentas claras", emptyS: "Registra qui\u00E9n te debe y a qui\u00E9n debes t\u00FA.", onAdd: () => setSheet("debt") }, state.debts.map((d) => (React.createElement(DebtCard, { key: d.id, d: d, dispatch: dispatch, onEdit: () => { setEditDebt(d); setSheet("debt"); } }))))),
         tab === "inversiones" && (React.createElement(Section, { empty: state.investments.length === 0, emptyT: "A\u00FAn sin inversiones", emptyS: "Sigue tus inversiones y mira c\u00F3mo evolucionan.", onAdd: () => setSheet("inv"), header: state.investments.length > 0 && (React.createElement("div", { style: { ...card, padding: 14, marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" } },
                 React.createElement("div", null,
                     React.createElement("div", { style: { color: C.textLo, fontSize: 11.5, fontWeight: 700 } }, "VALOR ACTUAL"),
@@ -2158,10 +2454,13 @@ function MoneyScreen({ state, dispatch, tab, setTab, toast }) {
                     React.createElement(Pencil, { size: 14, color: C.textLo }))));
         }))),
         React.createElement("div", { style: { height: 122 } }),
-        (tab === "movimientos" || tab === "deudas" || tab === "inversiones") && (React.createElement(FAB, { onClick: () => { setEditInv(null); setSheet(tab === "deudas" ? "debt" : tab === "inversiones" ? "inv" : "tx"); }, label: tab === "deudas" ? "Deuda" : tab === "inversiones" ? "Inversión" : "Movimiento" })),
-        React.createElement(Sheet, { open: !!sheet, onClose: () => { setSheet(null); setEditInv(null); }, title: sheet === "debt" ? "Nueva deuda" : sheet === "inv" ? (editInv ? "Editar inversión" : "Nueva inversión") : "Nuevo movimiento" },
+        (tab === "movimientos" || tab === "deudas" || tab === "inversiones") && (React.createElement(FAB, { onClick: () => { setEditInv(null); setEditDebt(null); setSheet(tab === "deudas" ? "debt" : tab === "inversiones" ? "inv" : "tx"); }, label: tab === "deudas" ? "Deuda" : tab === "inversiones" ? "Inversión" : "Movimiento" })),
+        React.createElement(Sheet, { open: !!sheet, onClose: () => { setSheet(null); setEditInv(null); setEditDebt(null); }, title: sheet === "debt" ? (editDebt ? "Editar deuda" : "Nueva deuda") : sheet === "inv" ? (editInv ? "Editar inversión" : "Nueva inversión") : "Nuevo movimiento" },
             sheet === "tx" && React.createElement(TxForm, { onSave: (d) => { dispatch({ type: "add", col: "tx", item: { id: uid(), date: todayISO(), ...d } }); setSheet(null); } }),
-            sheet === "debt" && React.createElement(DebtForm, { onSave: (d) => { dispatch({ type: "add", col: "debts", item: { id: uid(), date: todayISO(), settled: false, ...d } }); setSheet(null); } }),
+            sheet === "debt" && React.createElement(DebtForm, { initial: editDebt, onSave: (d) => { if (editDebt)
+                    dispatch({ type: "update", col: "debts", id: editDebt.id, patch: d });
+                else
+                    dispatch({ type: "add", col: "debts", item: { id: uid(), date: todayISO(), settled: false, ...d } }); setSheet(null); setEditDebt(null); }, onDelete: editDebt ? () => { dispatch({ type: "remove", col: "debts", id: editDebt.id }); setSheet(null); setEditDebt(null); } : null }),
             sheet === "inv" && React.createElement(InvForm, { initial: editInv, livePrices: invPrices, onSave: (d) => { if (editInv)
                     dispatch({ type: "update", col: "investments", id: editInv.id, patch: d });
                 else
@@ -2449,11 +2748,39 @@ function AssetCard({ a, onUpdate, onSetAlert, onRemove }) {
 }
 /* ---------- Inversión compartida ---------- */
 const SHARE_KINDS = [
-    { k: "aporte", l: "Aporte", col: C.good, desc: "alguien mete dinero" },
-    { k: "reparto", l: "Reparto", col: C.yellow, desc: "alguien se lleva ganancia" },
-    { k: "reinversion", l: "Reinversión", col: C.purple, desc: "el dinero se vuelve a invertir" },
-    { k: "gasto", l: "Gasto", col: C.bad, desc: "se gasta en otra cosa" },
+    { k: "meter", l: "Meter", col: C.good, sign: 1, desc: "metes dinero al bote" },
+    { k: "sacar", l: "Sacar", col: C.bad, sign: -1, desc: "sacas dinero del bote" },
+    { k: "ganancia", l: "Ganancia", col: C.yellow, sign: 1, desc: "sube el valor / entra beneficio" },
+    { k: "perdida", l: "Pérdida", col: "#ff8a3d", sign: -1, desc: "baja el valor" },
+    { k: "reparto", l: "Reparto", col: C.purple, sign: -1, desc: "un socio se lleva su parte" },
 ];
+// Legacy kinds (aporte/gasto/reinversion) kept working via these maps.
+const SHARE_META = {
+    meter: { l: "Meter", col: C.good }, aporte: { l: "Aporte", col: C.good },
+    sacar: { l: "Sacar", col: C.bad }, gasto: { l: "Gasto", col: C.bad },
+    ganancia: { l: "Ganancia", col: C.yellow }, perdida: { l: "Pérdida", col: "#ff8a3d" },
+    reparto: { l: "Reparto", col: C.purple }, reinversion: { l: "Reinversión", col: C.purple },
+};
+const SHARE_SIGN = { meter: 1, aporte: 1, ganancia: 1, sacar: -1, gasto: -1, perdida: -1, reparto: -1, reinversion: 0 };
+const shareSigned = (e) => { const s = SHARE_SIGN[e.kind]; return (s == null ? 1 : s) * Number(e.amount || 0); };
+// Live totals from the movement ledger — the bote (saldo) reflects every
+// meter/sacar/ganancia/etc. the instant it's dispatched.
+const shareTotals = (log) => {
+    let aportado = 0, retirado = 0, ganancia = 0, perdida = 0, saldo = 0;
+    (log || []).forEach((e) => {
+        const a = Number(e.amount || 0);
+        if (e.kind === "meter" || e.kind === "aporte")
+            aportado += a;
+        else if (e.kind === "sacar" || e.kind === "gasto" || e.kind === "reparto")
+            retirado += a;
+        else if (e.kind === "ganancia")
+            ganancia += a;
+        else if (e.kind === "perdida")
+            perdida += a;
+        saldo += shareSigned(e);
+    });
+    return { aportado, retirado, ganancia, perdida, beneficio: ganancia - perdida, saldo };
+};
 function MiniStat({ label, val, col }) {
     return React.createElement("div", { style: { ...card, padding: "8px 6px", textAlign: "center", background: C.ink } },
         React.createElement("div", { style: { color: C.textLo, fontSize: 10, fontWeight: 700 } }, label),
@@ -2463,11 +2790,23 @@ function SharedInvPanel({ state, dispatch }) {
     const [sheet, setSheet] = useState(null);
     const list = state.sharedInv || [];
     const addNew = (d) => {
-        dispatch({ type: "add", col: "sharedInv", item: { id: uid(), name: d.name, partners: d.partners, value: d.value || 0, log: d.invested ? [{ id: uid(), date: todayISO(), kind: "aporte", amount: d.invested, who: "común", note: "Inversión inicial" }] : [] } });
+        const log = [];
+        if (d.invested)
+            log.push({ id: uid(), date: todayISO(), kind: "meter", amount: d.invested, who: "común", note: "Inversión inicial" });
+        if (d.value && d.value !== d.invested) {
+            const diff = d.value - d.invested;
+            log.push({ id: uid(), date: todayISO(), kind: diff >= 0 ? "ganancia" : "perdida", amount: Math.abs(diff), who: "común", note: "Valor de partida" });
+        }
+        dispatch({ type: "add", col: "sharedInv", item: { id: uid(), name: d.name, partners: d.partners, log } });
         setSheet(null);
     };
+    const totalSaldo = list.reduce((s, si) => s + shareTotals(si.log).saldo, 0);
     return (React.createElement("div", null,
-        list.length === 0 ? (React.createElement(EmptyState, { face: "happy", title: "Inversi\u00F3n compartida", sub: "Invierte con alguien, reparte lo ganado (\u00E9l tanto, t\u00FA tanto) y controla qu\u00E9 se hace con el dinero: reinvertido o gastado.", cta: "Nueva compartida", onCta: () => setSheet("new") })) : (React.createElement("div", { style: { display: "grid", gap: 12 } }, list.map((si) => React.createElement(SharedInvCard, { key: si.id, si: si, dispatch: dispatch })))),
+        list.length === 0 ? (React.createElement(EmptyState, { face: "happy", title: "Inversi\u00F3n compartida", sub: "Invierte con alguien y controla el bote al segundo: mete y saca dinero cuando quieras, apunta ganancias o p\u00E9rdidas, reparte a cada socio y mira el resultado al momento.", cta: "Nueva compartida", onCta: () => setSheet("new") })) : (React.createElement(React.Fragment, null,
+            React.createElement("div", { style: { ...card, padding: 16, marginBottom: 12, background: "linear-gradient(135deg,#171029,#161616)", border: "1px solid #2c2340" } },
+                React.createElement("div", { style: { color: C.textLo, fontSize: 11.5, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase" } }, "En los botes ahora"),
+                React.createElement("div", { style: { color: C.textHi, fontWeight: 900, fontSize: 28, lineHeight: 1.1, marginTop: 2 } }, money(totalSaldo))),
+            React.createElement("div", { style: { display: "grid", gap: 12 } }, list.map((si) => React.createElement(SharedInvCard, { key: si.id, si: si, dispatch: dispatch }))))),
         React.createElement("div", { style: { height: 122 } }),
         React.createElement(FAB, { onClick: () => setSheet("new"), label: "Compartida" }),
         React.createElement(Sheet, { open: sheet === "new", onClose: () => setSheet(null), title: "Nueva inversi\u00F3n compartida" },
@@ -2475,69 +2814,128 @@ function SharedInvPanel({ state, dispatch }) {
 }
 function SharedInvCard({ si, dispatch }) {
     const [open, setOpen] = useState(false);
-    const [moveOpen, setMoveOpen] = useState(false);
-    const [editVal, setEditVal] = useState(false);
-    const [valInput, setValInput] = useState(String(si.value || 0));
+    const [more, setMore] = useState(false);
+    const [editName, setEditName] = useState(false);
+    const [nameInput, setNameInput] = useState(si.name || "");
+    const [quick, setQuick] = useState("");
+    const [editPartners, setEditPartners] = useState(false);
     const log = si.log || [];
-    const invested = log.filter((e) => e.kind === "aporte").reduce((s, e) => s + Number(e.amount || 0), 0);
-    const value = Number(si.value || 0);
-    const beneficio = value - invested;
-    const perPerson = (who) => log.filter((e) => e.kind === "reparto" && e.who === who).reduce((s, e) => s + Number(e.amount || 0), 0);
+    const t = shareTotals(log);
+    const partners = si.partners || [];
     const patch = (p) => dispatch({ type: "update", col: "sharedInv", id: si.id, patch: p });
-    const addMove = (m) => { patch({ log: [{ id: uid(), date: todayISO(), ...m }, ...log] }); setMoveOpen(false); };
+    const addMove = (m) => patch({ log: [{ id: uid(), date: todayISO(), ...m }, ...log] });
+    const updMove = (id, p) => patch({ log: log.map((e) => (e.id === id ? { ...e, ...p } : e)) });
     const delMove = (id) => patch({ log: log.filter((e) => e.id !== id) });
+    const perPerson = (who) => log.filter((e) => e.kind === "reparto" && e.who === who).reduce((s, e) => s + Number(e.amount || 0), 0);
+    const quickMove = (kind) => { const v = Number(quick); if (!v)
+        return; addMove({ kind, amount: Math.abs(v), who: "común", note: "" }); setQuick(""); };
     return (React.createElement("div", { style: { ...card, padding: 16 } },
         React.createElement("div", { style: { display: "flex", alignItems: "flex-start", gap: 10 } },
             React.createElement("div", { style: { width: 38, height: 38, borderRadius: 11, background: "rgba(144,19,254,.15)", display: "grid", placeItems: "center", flexShrink: 0 } },
                 React.createElement(Users, { size: 18, color: C.purple })),
-            React.createElement("div", { style: { flex: 1, minWidth: 0 } },
-                React.createElement("div", { style: { color: C.textHi, fontWeight: 800, fontSize: 15.5 } }, si.name),
-                React.createElement("div", { style: { color: C.textLo, fontSize: 12 } }, (si.partners || []).map((p) => p.name).join(" · "))),
-            React.createElement("button", { onClick: () => dispatch({ type: "remove", col: "sharedInv", id: si.id }), style: { ...iconBtn, width: 30, height: 30, color: C.textLo } },
+            React.createElement("div", { style: { flex: 1, minWidth: 0 } }, editName ? (React.createElement("div", { style: { display: "flex", gap: 6 } },
+                React.createElement("input", { autoFocus: true, style: { ...inputStyle, padding: "6px 10px", fontSize: 15 }, value: nameInput, onChange: (e) => setNameInput(e.target.value) }),
+                React.createElement("button", { onClick: () => { if (nameInput.trim())
+                        patch({ name: nameInput.trim() }); setEditName(false); }, style: { ...iconBtn, width: 34, height: 34, background: C.yellow, color: C.ink, borderColor: C.yellow } },
+                    React.createElement(Check, { size: 15, strokeWidth: 3 })))) : (React.createElement(React.Fragment, null,
+                React.createElement("div", { style: { color: C.textHi, fontWeight: 800, fontSize: 15.5, display: "flex", alignItems: "center", gap: 6 } },
+                    React.createElement("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, si.name),
+                    React.createElement("button", { onClick: () => { setNameInput(si.name || ""); setEditName(true); }, style: { background: "none", border: "none", color: C.textLo, cursor: "pointer", padding: 0, flexShrink: 0 } },
+                        React.createElement(Pencil, { size: 13 }))),
+                React.createElement("div", { style: { color: C.textLo, fontSize: 12 } }, partners.map((p) => p.name).join(" · ") || "Sin socios")))),
+            React.createElement("button", { onClick: () => { if (typeof window === "undefined" || window.confirm(`¿Borrar "${si.name}"?`))
+                    dispatch({ type: "remove", col: "sharedInv", id: si.id }); }, style: { ...iconBtn, width: 30, height: 30, color: C.textLo } },
                 React.createElement(Trash2, { size: 14 }))),
-        React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 12 } },
-            React.createElement(MiniStat, { label: "INVERTIDO", val: money(invested), col: C.textHi }),
-            React.createElement("button", { onClick: () => { setEditVal(true); setValInput(String(value)); }, style: { ...card, padding: "8px 6px", textAlign: "center", cursor: "pointer", background: C.ink } },
-                React.createElement("div", { style: { color: C.textLo, fontSize: 10, fontWeight: 700 } }, "VALOR HOY \u270E"),
-                React.createElement("div", { style: { color: C.textHi, fontWeight: 900, fontSize: 15 } }, money(value))),
-            React.createElement(MiniStat, { label: "BENEFICIO", val: `${beneficio >= 0 ? "+" : ""}${money(beneficio)}`, col: beneficio >= 0 ? C.good : C.bad })),
-        editVal && (React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 8 } },
-            React.createElement("input", { type: "number", inputMode: "decimal", autoFocus: true, style: { ...inputStyle, padding: "9px 12px" }, value: valInput, onChange: (e) => setValInput(e.target.value), placeholder: "Valor actual \u20AC" }),
-            React.createElement("button", { onClick: () => { patch({ value: Number(valInput || 0) }); setEditVal(false); }, style: { ...iconBtn, width: 42, height: 42, background: C.yellow, color: C.ink, borderColor: C.yellow } },
-                React.createElement(Check, { size: 18, strokeWidth: 3 })))),
-        (si.partners || []).length > 0 && (React.createElement("div", { style: { marginTop: 12, display: "grid", gap: 6 } }, (si.partners || []).map((p) => (React.createElement("div", { key: p.id, style: { display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13 } },
+        React.createElement("div", { style: { ...card, padding: "12px 14px", background: C.ink, marginTop: 12, textAlign: "center" } },
+            React.createElement("div", { style: { color: C.textLo, fontSize: 10.5, fontWeight: 700, letterSpacing: 1 } }, "BOTE ACTUAL"),
+            React.createElement("div", { style: { color: t.saldo >= 0 ? C.textHi : C.bad, fontWeight: 900, fontSize: 26, lineHeight: 1.1 } }, money(t.saldo))),
+        React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 8 } },
+            React.createElement(MiniStat, { label: "METIDO", val: money(t.aportado), col: C.textHi }),
+            React.createElement(MiniStat, { label: "SACADO", val: money(t.retirado), col: C.textHi }),
+            React.createElement(MiniStat, { label: "BENEFICIO", val: `${t.beneficio >= 0 ? "+" : ""}${money(t.beneficio)}`, col: t.beneficio >= 0 ? C.good : C.bad })),
+        React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 10 } },
+            React.createElement("input", { type: "number", inputMode: "decimal", style: { ...inputStyle, padding: "10px 12px" }, value: quick, onChange: (e) => setQuick(e.target.value), placeholder: "Importe \u20AC" }),
+            React.createElement("button", { onClick: () => quickMove("meter"), style: miniBtn(C.good, C.ink) }, "Meter"),
+            React.createElement("button", { onClick: () => quickMove("sacar"), style: miniBtn(C.ink3, C.textHi) }, "Sacar")),
+        more ? (React.createElement(SharedMoveForm, { partners: partners, onSave: (m) => { addMove(m); setMore(false); }, onCancel: () => setMore(false) })) : (React.createElement("button", { onClick: () => setMore(true), style: { ...iconBtn, width: "100%", height: 38, marginTop: 8, gap: 8, fontWeight: 800, fontSize: 12.5, background: C.ink3 } },
+            React.createElement(Plus, { size: 15 }),
+            " Ganancia \u00B7 p\u00E9rdida \u00B7 reparto")),
+        partners.length > 0 && (React.createElement("div", { style: { marginTop: 12, display: "grid", gap: 6 } }, partners.map((p) => (React.createElement("div", { key: p.id, style: { display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13 } },
             React.createElement("span", { style: { color: C.textHi, fontWeight: 700 } },
                 p.name,
                 p.share ? ` · ${p.share}%` : ""),
             React.createElement("span", { style: { color: C.textLo } },
                 "se ha llevado ",
                 React.createElement("b", { style: { color: C.yellow } }, money(perPerson(p.name))))))))),
+        React.createElement("button", { onClick: () => setEditPartners((v) => !v), style: { background: "none", border: "none", color: C.textLo, fontSize: 12, fontWeight: 700, cursor: "pointer", marginTop: 8, padding: 0, display: "flex", alignItems: "center", gap: 4 } },
+            React.createElement(Settings, { size: 12 }),
+            " Editar socios"),
+        editPartners && React.createElement(PartnersEditor, { partners: partners, onSave: (ps) => { patch({ partners: ps }); setEditPartners(false); }, onCancel: () => setEditPartners(false) }),
         React.createElement("button", { onClick: () => setOpen((o) => !o), style: { ...iconBtn, width: "100%", height: 38, marginTop: 12, gap: 8, fontWeight: 800, fontSize: 13, background: C.ink3 } },
             React.createElement(ChevronRight, { size: 15, style: { transform: open ? "rotate(90deg)" : "none", transition: "transform .2s" } }),
             " Movimientos (",
             log.length,
             ")"),
-        open && (React.createElement("div", { style: { marginTop: 10 } },
-            moveOpen ? (React.createElement(SharedMoveForm, { partners: si.partners, onSave: addMove, onCancel: () => setMoveOpen(false) })) : (React.createElement("button", { onClick: () => setMoveOpen(true), style: { ...iconBtn, width: "100%", height: 40, gap: 8, fontWeight: 800, fontSize: 13, background: C.purple, borderColor: C.purple, color: "#fff" } },
-                React.createElement(Plus, { size: 16, color: "#fff", strokeWidth: 3 }),
-                " A\u00F1adir movimiento")),
-            React.createElement("div", { style: { display: "grid", gap: 6, marginTop: 10 } },
-                log.length === 0 && React.createElement("div", { style: { color: C.textLo, fontSize: 12.5, textAlign: "center", padding: "8px 0" } }, "Sin movimientos. A\u00F1ade aportes, repartos, reinversiones o gastos."),
-                log.map((e) => {
-                    const kd = SHARE_KINDS.find((k) => k.k === e.kind) || SHARE_KINDS[0];
-                    return (React.createElement("div", { key: e.id, style: { ...card, padding: "9px 12px", display: "flex", alignItems: "center", gap: 10, background: C.ink } },
-                        React.createElement("span", { style: { width: 8, height: 8, borderRadius: 999, background: kd.col, flexShrink: 0 } }),
-                        React.createElement("div", { style: { flex: 1, minWidth: 0 } },
-                            React.createElement("div", { style: { color: C.textHi, fontSize: 13, fontWeight: 700 } },
-                                kd.l,
-                                e.who && e.who !== "común" ? ` · ${e.who}` : ""),
-                            React.createElement("div", { style: { color: C.textLo, fontSize: 11 } },
-                                fmtDate(e.date),
-                                e.note ? ` · ${e.note}` : "")),
-                        React.createElement("span", { style: { color: kd.col, fontWeight: 800, fontSize: 13 } }, money(e.amount)),
-                        React.createElement("button", { onClick: () => delMove(e.id), style: { background: "none", border: "none", color: C.textLo, cursor: "pointer", padding: 2 } },
-                            React.createElement(X, { size: 13 }))));
-                }))))));
+        open && (React.createElement("div", { style: { display: "grid", gap: 6, marginTop: 10 } },
+            log.length === 0 && React.createElement("div", { style: { color: C.textLo, fontSize: 12.5, textAlign: "center", padding: "8px 0" } }, "Sin movimientos todav\u00EDa. Mete dinero para empezar."),
+            log.map((e) => React.createElement(ShareMoveRow, { key: e.id, e: e, partners: partners, onUpd: (p) => updMove(e.id, p), onDel: () => delMove(e.id) }))))));
+}
+function ShareMoveRow({ e, partners, onUpd, onDel }) {
+    const [edit, setEdit] = useState(false);
+    const [amt, setAmt] = useState(String(e.amount || ""));
+    const [note, setNote] = useState(e.note || "");
+    const [kind, setKind] = useState(e.kind);
+    const [who, setWho] = useState(e.who || "común");
+    const meta = SHARE_META[e.kind] || { l: e.kind, col: C.textLo };
+    const whoOptions = ["común", ...(partners || []).map((p) => p.name)];
+    const save = () => { const v = Number(amt); if (!isFinite(v))
+        return; onUpd({ amount: Math.abs(v), note, kind, who: kind === "reparto" ? who : "común" }); setEdit(false); };
+    if (edit) {
+        return (React.createElement("div", { style: { ...card, padding: 10, background: C.ink, display: "grid", gap: 8 } },
+            React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } }, SHARE_KINDS.map((k) => React.createElement(Chip, { key: k.k, active: kind === k.k, onClick: () => setKind(k.k), accent: k.col }, k.l))),
+            React.createElement("input", { type: "number", inputMode: "decimal", autoFocus: true, style: { ...inputStyle, padding: "9px 12px" }, value: amt, onChange: (ev) => setAmt(ev.target.value), placeholder: "Importe \u20AC" }),
+            kind === "reparto" && (React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } }, whoOptions.map((w) => React.createElement(Chip, { key: w, active: who === w, onClick: () => setWho(w) }, w === "común" ? "Común" : w)))),
+            React.createElement("input", { style: { ...inputStyle, padding: "9px 12px" }, value: note, onChange: (ev) => setNote(ev.target.value), placeholder: "Nota (opcional)" }),
+            React.createElement("div", { style: { display: "flex", gap: 8 } },
+                React.createElement("button", { onClick: save, style: miniBtn(C.yellow, C.ink) }, "Guardar"),
+                React.createElement("button", { onClick: () => setEdit(false), style: miniBtn(C.ink3, C.textLo) }, "Cancelar"),
+                React.createElement("button", { onClick: onDel, style: { ...iconBtn, width: 40, height: 40, color: C.bad } },
+                    React.createElement(Trash2, { size: 15 })))));
+    }
+    const sign = SHARE_SIGN[e.kind] == null ? 1 : SHARE_SIGN[e.kind];
+    return (React.createElement("div", { style: { ...card, padding: "9px 12px", display: "flex", alignItems: "center", gap: 10, background: C.ink } },
+        React.createElement("span", { style: { width: 8, height: 8, borderRadius: 999, background: meta.col, flexShrink: 0 } }),
+        React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+            React.createElement("div", { style: { color: C.textHi, fontSize: 13, fontWeight: 700 } },
+                meta.l,
+                e.who && e.who !== "común" ? ` · ${e.who}` : ""),
+            React.createElement("div", { style: { color: C.textLo, fontSize: 11 } },
+                fmtDate(e.date),
+                e.note ? ` · ${e.note}` : "")),
+        React.createElement("span", { style: { color: meta.col, fontWeight: 800, fontSize: 13 } },
+            sign < 0 ? "−" : sign > 0 ? "+" : "",
+            money(e.amount).replace("−", "")),
+        React.createElement("button", { onClick: () => { setAmt(String(e.amount || "")); setNote(e.note || ""); setKind(e.kind); setWho(e.who || "común"); setEdit(true); }, style: { background: "none", border: "none", color: C.textLo, cursor: "pointer", padding: 2 } },
+            React.createElement(Pencil, { size: 13 }))));
+}
+function PartnersEditor({ partners, onSave, onCancel }) {
+    const [ps, setPs] = useState((partners && partners.length ? partners : [{ id: uid(), name: "", share: "" }]).map((p) => ({ id: p.id || uid(), name: p.name || "", share: p.share == null ? "" : String(p.share) })));
+    const setP = (id, f, v) => setPs((a) => a.map((p) => (p.id === id ? { ...p, [f]: v } : p)));
+    const add = () => setPs((a) => [...a, { id: uid(), name: "", share: "" }]);
+    const del = (id) => setPs((a) => a.filter((p) => p.id !== id));
+    return (React.createElement("div", { style: { ...card, padding: 12, background: C.ink, marginTop: 10, display: "grid", gap: 8 } },
+        React.createElement("div", { style: { color: C.textLo, fontSize: 11.5, fontWeight: 700, letterSpacing: 0.5 } }, "SOCIOS"),
+        ps.map((p) => (React.createElement("div", { key: p.id, style: { display: "flex", gap: 8 } },
+            React.createElement("input", { style: { ...inputStyle, flex: 1, padding: "9px 12px" }, value: p.name, onChange: (e) => setP(p.id, "name", e.target.value), placeholder: "Nombre" }),
+            React.createElement("input", { type: "number", inputMode: "decimal", style: { ...inputStyle, width: 66, padding: "9px 8px" }, value: p.share, onChange: (e) => setP(p.id, "share", e.target.value), placeholder: "%" }),
+            React.createElement("button", { onClick: () => del(p.id), style: { ...iconBtn, width: 40, height: 40, color: C.textLo } },
+                React.createElement(X, { size: 15 }))))),
+        React.createElement("button", { onClick: add, style: { ...iconBtn, width: "auto", paddingInline: 12, height: 36, gap: 6, fontSize: 12.5, fontWeight: 700 } },
+            React.createElement(UserPlus, { size: 14 }),
+            " A\u00F1adir socio"),
+        React.createElement("div", { style: { display: "flex", gap: 8 } },
+            React.createElement("button", { onClick: () => onSave(ps.filter((p) => p.name.trim()).map((p) => ({ id: p.id, name: p.name.trim(), share: p.share === "" ? null : Number(p.share) }))), style: miniBtn(C.purple, "#fff") }, "Guardar socios"),
+            React.createElement("button", { onClick: onCancel, style: miniBtn(C.ink3, C.textLo) }, "Cancelar"))));
 }
 function SharedInvForm({ me, onSave }) {
     const [name, setName] = useState("");
@@ -2574,12 +2972,12 @@ function SharedInvForm({ me, onSave }) {
             React.createElement("span", { style: { color: "#fff" } }, "Crear"))));
 }
 function SharedMoveForm({ partners, onSave, onCancel }) {
-    const [kind, setKind] = useState("reparto");
+    const [kind, setKind] = useState("ganancia");
     const [amount, setAmount] = useState("");
     const [who, setWho] = useState((partners && partners[0] && partners[0].name) || "común");
     const [note, setNote] = useState("");
     const whoOptions = ["común", ...(partners || []).map((p) => p.name)];
-    const needsWho = kind === "reparto" || kind === "aporte";
+    const needsWho = kind === "reparto";
     return (React.createElement("div", { style: { ...card, padding: 12, background: C.ink, marginBottom: 6 } },
         React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 } }, SHARE_KINDS.map((k) => React.createElement(Chip, { key: k.k, active: kind === k.k, onClick: () => setKind(k.k), accent: k.col }, k.l))),
         React.createElement("div", { style: { color: C.textLo, fontSize: 11.5, marginBottom: 8 } }, (SHARE_KINDS.find((k) => k.k === kind) || {}).desc),
@@ -2587,7 +2985,7 @@ function SharedMoveForm({ partners, onSave, onCancel }) {
         needsWho && (React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 } }, whoOptions.map((w) => React.createElement(Chip, { key: w, active: who === w, onClick: () => setWho(w) }, w === "común" ? "Común" : w)))),
         React.createElement("input", { style: { ...inputStyle, marginBottom: 8 }, value: note, onChange: (e) => setNote(e.target.value), placeholder: "Nota: en qu\u00E9 se reinvirti\u00F3 / gast\u00F3\u2026" }),
         React.createElement("div", { style: { display: "flex", gap: 8 } },
-            React.createElement("button", { onClick: () => amount && onSave({ kind, amount: Number(amount), who: needsWho ? who : "común", note }), style: miniBtn(C.purple, "#fff") }, "Guardar"),
+            React.createElement("button", { onClick: () => amount && onSave({ kind, amount: Math.abs(Number(amount)), who: needsWho ? who : "común", note }), style: miniBtn(C.purple, "#fff") }, "Guardar"),
             React.createElement("button", { onClick: onCancel, style: miniBtn(C.ink3, C.textLo) }, "Cancelar"))));
 }
 /* ---------- Ahorro (huchas) ---------- */
@@ -2775,11 +3173,11 @@ function TxForm({ onSave }) {
             " Guardar")));
 }
 const typeTab = (on, col) => ({ flex: 1, padding: "12px", borderRadius: 14, border: `1.5px solid ${on ? col : C.line}`, background: on ? col : "transparent", color: on ? C.ink : C.textLo, fontWeight: 800, cursor: "pointer" });
-function DebtForm({ onSave }) {
-    const [dir, setDir] = useState("meDeben");
-    const [person, setPerson] = useState("");
-    const [amount, setAmount] = useState("");
-    const [note, setNote] = useState("");
+function DebtForm({ initial, onSave, onDelete }) {
+    const [dir, setDir] = useState((initial === null || initial === void 0 ? void 0 : initial.dir) || "meDeben");
+    const [person, setPerson] = useState((initial === null || initial === void 0 ? void 0 : initial.person) || "");
+    const [amount, setAmount] = useState((initial === null || initial === void 0 ? void 0 : initial.amount) != null ? String(initial.amount) : "");
+    const [note, setNote] = useState((initial === null || initial === void 0 ? void 0 : initial.note) || "");
     return (React.createElement("div", null,
         React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 14 } },
             React.createElement("button", { onClick: () => setDir("meDeben"), style: typeTab(dir === "meDeben", C.good) }, "Me deben"),
@@ -2792,7 +3190,47 @@ function DebtForm({ onSave }) {
             React.createElement("input", { style: inputStyle, value: note, onChange: (e) => setNote(e.target.value), placeholder: "Opcional" })),
         React.createElement(PrimaryBtn, { full: true, onClick: () => person.trim() && amount && onSave({ dir, person: person.trim(), amount: Number(amount), note }) },
             React.createElement(Check, { size: 18, strokeWidth: 3 }),
-            " Guardar")));
+            " ",
+            initial ? "Guardar cambios" : "Guardar"),
+        onDelete && React.createElement("button", { onClick: onDelete, style: { ...iconBtn, width: "100%", height: 44, marginTop: 10, gap: 8, fontWeight: 700, fontSize: 13.5, color: C.bad, borderColor: "rgba(255,92,92,.4)" } },
+            React.createElement(Trash2, { size: 16 }),
+            " Borrar deuda")));
+}
+function DebtCard({ d, dispatch, onEdit }) {
+    const [adj, setAdj] = useState(false);
+    const [amt, setAmt] = useState("");
+    const apply = (sign) => {
+        const v = Number(amt);
+        if (!v)
+            return;
+        const next = Math.max(0, Number(d.amount || 0) + sign * Math.abs(v));
+        dispatch({ type: "update", col: "debts", id: d.id, patch: { amount: next, settled: next <= 0 ? true : d.settled } });
+        setAmt("");
+        setAdj(false);
+    };
+    return (React.createElement("div", { style: { ...card, padding: 14, opacity: d.settled ? 0.55 : 1 } },
+        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
+            React.createElement("div", { style: { width: 38, height: 38, borderRadius: 11, background: d.dir === "meDeben" ? "rgba(61,220,132,.15)" : "rgba(255,92,92,.15)", display: "grid", placeItems: "center" } },
+                React.createElement(HandCoins, { size: 18, color: d.dir === "meDeben" ? C.good : C.bad })),
+            React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                React.createElement("div", { style: { color: C.textHi, fontWeight: 700, fontSize: 14.5 } }, d.person),
+                React.createElement("div", { style: { color: C.textLo, fontSize: 12 } },
+                    d.dir === "meDeben" ? "Te debe" : "Le debes",
+                    d.note ? ` · ${d.note}` : "")),
+            React.createElement("div", { style: { color: d.dir === "meDeben" ? C.good : C.bad, fontWeight: 900, fontSize: 16 } }, money(d.amount))),
+        adj ? (React.createElement("div", { style: { marginTop: 10 } },
+            React.createElement("div", { style: { color: C.textLo, fontSize: 11.5, marginBottom: 6 } }, "Ajustar saldo: \"Abon\u00F3\" resta (te pag\u00F3 parte), \"+ Sum\u00F3\" a\u00F1ade (debe m\u00E1s)."),
+            React.createElement("div", { style: { display: "flex", gap: 8 } },
+                React.createElement("input", { type: "number", inputMode: "decimal", autoFocus: true, style: { ...inputStyle, padding: "9px 12px" }, value: amt, onChange: (e) => setAmt(e.target.value), placeholder: "\u20AC" }),
+                React.createElement("button", { onClick: () => apply(-1), style: miniBtn(C.good, C.ink) }, "\u2212 Abon\u00F3"),
+                React.createElement("button", { onClick: () => apply(1), style: miniBtn(C.ink3, C.textHi) }, "+ Sum\u00F3")),
+            React.createElement("button", { onClick: () => { setAdj(false); setAmt(""); }, style: { ...iconBtn, width: "auto", paddingInline: 12, height: 32, marginTop: 8, fontSize: 12, color: C.textLo } }, "Cancelar"))) : (React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 10 } },
+            React.createElement("button", { onClick: () => setAdj(true), style: miniBtn(C.ink3, C.textHi) }, "\u00B1 Ajustar"),
+            React.createElement("button", { onClick: () => dispatch({ type: "update", col: "debts", id: d.id, patch: { settled: !d.settled } }), style: miniBtn(d.settled ? C.line : C.yellow, d.settled ? C.textLo : C.ink) }, d.settled ? "Reabrir" : "Saldada"),
+            React.createElement("button", { onClick: onEdit, style: { ...iconBtn, width: 36, height: 36, color: C.textLo } },
+                React.createElement(Pencil, { size: 14 })),
+            React.createElement("button", { onClick: () => dispatch({ type: "remove", col: "debts", id: d.id }), style: { ...iconBtn, width: 36, height: 36, color: C.textLo } },
+                React.createElement(Trash2, { size: 14 }))))));
 }
 const INV_CRYPTOS = [{ name: "Bitcoin", sym: "BTC", cg: "bitcoin" }, { name: "Ethereum", sym: "ETH", cg: "ethereum" }, { name: "Solana", sym: "SOL", cg: "solana" }];
 function InvForm({ initial, onSave, onDelete, livePrices }) {
@@ -2860,22 +3298,253 @@ function InvForm({ initial, onSave, onDelete, livePrices }) {
 /* ============================================================
    COLECCIÓN + FIADOS
    ============================================================ */
+/* ============================================================
+   Empresas y artistas — colaboradores: coste, beneficio, eventos, margen
+   ============================================================ */
+const ORG_TYPES = [
+    { k: "empresa", l: "Empresa", icon: Landmark },
+    { k: "artista", l: "Artista", icon: Star },
+];
+const orgTotals = (org) => {
+    const ev = (org && org.events) || [];
+    const income = ev.reduce((s, e) => s + Number(e.income || 0), 0);
+    const cost = ev.reduce((s, e) => s + Number(e.cost || 0), 0) + Number((org && org.baseCost) || 0);
+    const profit = income - cost;
+    const margin = income > 0 ? (profit / income) * 100 : null;
+    return { income, cost, profit, margin, events: ev.length };
+};
+function OrgsPanel({ state, dispatch }) {
+    const [sheet, setSheet] = useState(false);
+    const [active, setActive] = useState(null);
+    const [view, setView] = useState("beneficio"); // beneficio | margen
+    const list = state.orgs || [];
+    const activeOrg = active ? list.find((o) => o.id === active) : null;
+    if (activeOrg)
+        return React.createElement(OrgDetail, { org: activeOrg, dispatch: dispatch, onBack: () => setActive(null) });
+    const addOrg = (d) => { dispatch({ type: "add", col: "orgs", item: { id: uid(), events: [], ...d } }); setSheet(false); };
+    const totals = list.reduce((acc, o) => { const t = orgTotals(o); acc.income += t.income; acc.cost += t.cost; acc.profit += t.profit; return acc; }, { income: 0, cost: 0, profit: 0 });
+    return (React.createElement("div", null,
+        list.length === 0 ? (React.createElement(EmptyState, { face: "happy", title: "Empresas y artistas", sub: "Archiva las empresas y artistas que colaboran contigo: cu\u00E1nto te cuestan, cu\u00E1nto beneficio sacas, los eventos que hab\u00E9is hecho y tu margen. Todo editable, con gr\u00E1fica.", cta: "A\u00F1adir", onCta: () => setSheet(true) })) : (React.createElement(React.Fragment, null,
+            React.createElement("div", { style: { ...card, padding: 16, marginBottom: 12, background: "linear-gradient(135deg,#101a12,#161616)", border: "1px solid #22331f" } },
+                React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 10 } },
+                    React.createElement("div", { style: { minWidth: 0 } },
+                        React.createElement("div", { style: { color: C.textLo, fontSize: 11.5, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase" } }, "Beneficio total"),
+                        React.createElement("div", { style: { color: totals.profit >= 0 ? C.good : C.bad, fontWeight: 900, fontSize: 28, lineHeight: 1.1, marginTop: 2 } },
+                            totals.profit >= 0 ? "+" : "",
+                            money(totals.profit))),
+                    React.createElement("div", { style: { textAlign: "right", color: C.textLo, fontSize: 12, flexShrink: 0 } },
+                        React.createElement("div", null,
+                            "Ingresos ",
+                            React.createElement("b", { style: { color: C.textHi } }, money(totals.income))),
+                        React.createElement("div", null,
+                            "Coste ",
+                            React.createElement("b", { style: { color: C.textHi } }, money(totals.cost)))))),
+            React.createElement("div", { style: { ...card, padding: 16, marginBottom: 12 } },
+                React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 } },
+                    React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+                        React.createElement(BarChart3, { size: 16, color: C.yellow }),
+                        React.createElement("span", { style: { color: C.textHi, fontWeight: 800, fontSize: 14 } }, view === "beneficio" ? "Beneficio por colaborador" : "Margen por colaborador")),
+                    React.createElement("div", { style: { display: "flex", gap: 6 } },
+                        React.createElement(Chip, { active: view === "beneficio", onClick: () => setView("beneficio") }, "\u20AC"),
+                        React.createElement(Chip, { active: view === "margen", onClick: () => setView("margen") }, "%"))),
+                React.createElement(OrgBars, { list: list, view: view })),
+            React.createElement("div", { style: { display: "grid", gap: 12 } }, list.map((o) => React.createElement(OrgCard, { key: o.id, org: o, onOpen: () => setActive(o.id) }))))),
+        React.createElement("div", { style: { height: 122 } }),
+        React.createElement(FAB, { onClick: () => setSheet(true), label: "Empresa / artista" }),
+        React.createElement(Sheet, { open: sheet, onClose: () => setSheet(false), title: "Nueva empresa o artista" },
+            React.createElement(OrgForm, { onSave: addOrg }))));
+}
+function OrgBars({ list, view }) {
+    const rows = list.map((o) => { const t = orgTotals(o); return { name: o.name, profit: t.profit, margin: t.margin == null ? 0 : t.margin, hasIncome: t.income > 0 }; });
+    const data = view === "beneficio"
+        ? rows.map((r) => ({ label: r.name, value: Math.max(0, r.profit), raw: r.profit, display: `${r.profit >= 0 ? "+" : ""}${money(r.profit)}` })).sort((a, b) => b.raw - a.raw)
+        : rows.map((r) => ({ label: r.name, value: Math.max(0, r.margin), raw: r.hasIncome ? r.margin : 0, display: r.hasIncome ? `${r.margin.toFixed(0)}%` : "—" })).sort((a, b) => b.raw - a.raw);
+    const max = Math.max(1, ...data.map((d) => d.value));
+    if (!data.length)
+        return React.createElement("div", { style: { color: C.textLo, fontSize: 12.5 } }, "Sin datos.");
+    return (React.createElement("div", { style: { display: "grid", gap: 10 } }, data.map((d, i) => (React.createElement("div", { key: d.label + i },
+        React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 4 } },
+            React.createElement("span", { style: { color: C.textHi, fontSize: 12.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "62%" } }, d.label),
+            React.createElement("span", { style: { color: d.raw >= 0 ? C.good : C.bad, fontSize: 12, fontWeight: 700 } }, d.display)),
+        React.createElement("div", { style: { height: 8, borderRadius: 999, background: C.ink3, overflow: "hidden" } },
+            React.createElement("div", { style: { width: `${(d.value / max) * 100}%`, height: "100%", background: d.raw >= 0 ? SLICE[i % SLICE.length] : C.bad, borderRadius: 999, transition: "width .5s" } })))))));
+}
+function OrgCard({ org, onOpen }) {
+    const t = orgTotals(org);
+    const typeMeta = ORG_TYPES.find((x) => x.k === org.type) || ORG_TYPES[0];
+    const Ico = typeMeta.icon;
+    const isArt = org.type === "artista";
+    return (React.createElement("button", { onClick: onOpen, style: { ...card, padding: 16, width: "100%", textAlign: "left", cursor: "pointer" } },
+        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12 } },
+            React.createElement("div", { style: { width: 46, height: 46, borderRadius: 13, background: isArt ? "rgba(255,212,0,.15)" : "rgba(144,19,254,.15)", display: "grid", placeItems: "center", flexShrink: 0 } },
+                React.createElement(Ico, { size: 22, color: isArt ? C.yellow : C.purple })),
+            React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                React.createElement("div", { style: { color: C.textHi, fontWeight: 800, fontSize: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, org.name),
+                React.createElement("div", { style: { color: C.textLo, fontSize: 12.5, marginTop: 2 } },
+                    typeMeta.l,
+                    " \u00B7 ",
+                    t.events,
+                    " evento",
+                    t.events === 1 ? "" : "s")),
+            React.createElement("div", { style: { textAlign: "right", flexShrink: 0 } },
+                React.createElement("div", { style: { color: t.profit >= 0 ? C.good : C.bad, fontWeight: 900, fontSize: 15 } },
+                    t.profit >= 0 ? "+" : "",
+                    money(t.profit)),
+                React.createElement("div", { style: { color: C.textLo, fontSize: 11.5 } }, t.margin == null ? "—" : `${t.margin.toFixed(0)}% margen`)),
+            React.createElement(ChevronRight, { size: 18, color: C.textLo })),
+        React.createElement("div", { style: { height: 6, borderRadius: 999, background: C.ink3, overflow: "hidden", marginTop: 12 } },
+            React.createElement("div", { style: { width: `${Math.max(0, Math.min(100, t.margin == null ? 0 : t.margin))}%`, height: "100%", background: t.profit >= 0 ? C.good : C.bad, borderRadius: 999, transition: "width .5s" } }))));
+}
+function OrgDetail({ org, dispatch, onBack }) {
+    const [sheet, setSheet] = useState(null); // 'org' | 'event'
+    const [editEvent, setEditEvent] = useState(null);
+    const t = orgTotals(org);
+    const typeMeta = ORG_TYPES.find((x) => x.k === org.type) || ORG_TYPES[0];
+    const Ico = typeMeta.icon;
+    const isArt = org.type === "artista";
+    const save = (patch) => dispatch({ type: "update", col: "orgs", id: org.id, patch });
+    const events = [...(org.events || [])].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+    const addEvent = (ev) => save({ events: [{ id: uid(), ...ev }, ...(org.events || [])] });
+    const updEvent = (id, patch) => save({ events: (org.events || []).map((e) => (e.id === id ? { ...e, ...patch } : e)) });
+    const delEvent = (id) => save({ events: (org.events || []).filter((e) => e.id !== id) });
+    const del = () => { if (typeof window === "undefined" || window.confirm(`¿Borrar "${org.name}" y sus eventos?`)) {
+        dispatch({ type: "remove", col: "orgs", id: org.id });
+        onBack();
+    } };
+    return (React.createElement("div", null,
+        React.createElement("button", { onClick: onBack, style: { ...linkBtn, marginBottom: 12 } },
+            React.createElement(ChevronLeft, { size: 16 }),
+            " Empresas y artistas"),
+        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 14 } },
+            React.createElement("div", { style: { width: 50, height: 50, borderRadius: 14, background: isArt ? "rgba(255,212,0,.15)" : "rgba(144,19,254,.15)", display: "grid", placeItems: "center", flexShrink: 0 } },
+                React.createElement(Ico, { size: 24, color: isArt ? C.yellow : C.purple })),
+            React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                React.createElement("h2", { style: { color: C.textHi, fontWeight: 900, fontSize: 22, margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, org.name),
+                React.createElement("div", { style: { color: C.textLo, fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } },
+                    typeMeta.l,
+                    org.note ? ` · ${org.note}` : "")),
+            React.createElement("button", { onClick: () => setSheet("org"), style: { ...iconBtn, width: 40, height: 40, flexShrink: 0 } },
+                React.createElement(Pencil, { size: 16 }))),
+        React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 } },
+            React.createElement(MiniStat, { label: "INGRESOS", val: money(t.income), col: C.good }),
+            React.createElement(MiniStat, { label: "COSTE", val: money(t.cost), col: C.textHi }),
+            React.createElement(MiniStat, { label: "BENEFICIO", val: `${t.profit >= 0 ? "+" : ""}${money(t.profit)}`, col: t.profit >= 0 ? C.good : C.bad }),
+            React.createElement(MiniStat, { label: "MARGEN", val: t.margin == null ? "—" : `${t.margin.toFixed(0)}%`, col: C.yellow })),
+        React.createElement("div", { style: { ...card, padding: 12, marginBottom: 14 } },
+            React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 6 } },
+                React.createElement("span", { style: { color: C.textLo, fontSize: 12, fontWeight: 700 } }, "Margen de beneficio"),
+                React.createElement("span", { style: { color: t.profit >= 0 ? C.good : C.bad, fontSize: 12.5, fontWeight: 800 } }, t.margin == null ? "sin ingresos" : `${t.margin.toFixed(1)}%`)),
+            React.createElement("div", { style: { height: 10, borderRadius: 999, background: C.ink3, overflow: "hidden" } },
+                React.createElement("div", { style: { width: `${Math.max(0, Math.min(100, t.margin == null ? 0 : t.margin))}%`, height: "100%", background: `linear-gradient(90deg,${C.good},${C.yellow})`, borderRadius: 999, transition: "width .5s" } }))),
+        React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 } },
+            React.createElement("span", { style: { color: C.textHi, fontWeight: 800, fontSize: 15 } },
+                "Eventos (",
+                events.length,
+                ")"),
+            React.createElement("button", { onClick: () => { setEditEvent(null); setSheet("event"); }, style: { ...iconBtn, width: "auto", paddingInline: 12, height: 36, gap: 6, fontSize: 12.5, fontWeight: 800, background: C.yellow, color: C.ink, borderColor: C.yellow } },
+                React.createElement(Plus, { size: 15, strokeWidth: 3 }),
+                " Evento")),
+        events.length === 0 ? (React.createElement("div", { style: { ...card, padding: 16, textAlign: "center", color: C.textLo, fontSize: 13 } }, "A\u00FAn no hay eventos. A\u00F1ade el primero para ver el beneficio y el margen.")) : (React.createElement("div", { style: { display: "grid", gap: 8 } }, events.map((e) => {
+            const p = Number(e.income || 0) - Number(e.cost || 0);
+            return (React.createElement("button", { key: e.id, onClick: () => { setEditEvent(e); setSheet("event"); }, style: { ...card, padding: 12, textAlign: "left", cursor: "pointer" } },
+                React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 } },
+                    React.createElement("div", { style: { minWidth: 0 } },
+                        React.createElement("div", { style: { color: C.textHi, fontWeight: 700, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, e.name),
+                        React.createElement("div", { style: { color: C.textLo, fontSize: 11.5 } },
+                            fmtDate(e.date),
+                            " \u00B7 ingreso ",
+                            money(e.income),
+                            " \u00B7 coste ",
+                            money(e.cost))),
+                    React.createElement("div", { style: { color: p >= 0 ? C.good : C.bad, fontWeight: 800, fontSize: 14, flexShrink: 0 } },
+                        p >= 0 ? "+" : "",
+                        money(p)))));
+        }))),
+        React.createElement("div", { style: { height: 100 } }),
+        React.createElement(Sheet, { open: sheet === "org", onClose: () => setSheet(null), title: "Editar" },
+            React.createElement(OrgForm, { initial: org, onSave: (d) => { save(d); setSheet(null); }, onDelete: del })),
+        React.createElement(Sheet, { open: sheet === "event", onClose: () => { setSheet(null); setEditEvent(null); }, title: editEvent ? "Editar evento" : "Nuevo evento" },
+            React.createElement(OrgEventForm, { initial: editEvent, onSave: (d) => { if (editEvent)
+                    updEvent(editEvent.id, d);
+                else
+                    addEvent(d); setSheet(null); setEditEvent(null); }, onDelete: editEvent ? () => { delEvent(editEvent.id); setSheet(null); setEditEvent(null); } : null }))));
+}
+function OrgForm({ initial, onSave, onDelete }) {
+    const [name, setName] = useState(initial ? initial.name : "");
+    const [type, setType] = useState(initial ? (initial.type || "empresa") : "empresa");
+    const [baseCost, setBaseCost] = useState(initial && initial.baseCost ? String(initial.baseCost) : "");
+    const [note, setNote] = useState(initial ? (initial.note || "") : "");
+    return (React.createElement("div", null,
+        React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 12 } }, ORG_TYPES.map((tp) => React.createElement(Chip, { key: tp.k, active: type === tp.k, onClick: () => setType(tp.k) }, tp.l))),
+        React.createElement(Field, { label: "Nombre" },
+            React.createElement("input", { style: inputStyle, value: name, onChange: (e) => setName(e.target.value), placeholder: type === "artista" ? "Ej. DJ Nébula" : "Ej. Sala Aurora", autoFocus: true })),
+        React.createElement(Field, { label: "Coste fijo / cuota (opcional \u20AC)" },
+            React.createElement("input", { type: "number", inputMode: "decimal", style: inputStyle, value: baseCost, onChange: (e) => setBaseCost(e.target.value), placeholder: "0,00" })),
+        React.createElement(Field, { label: "Notas (opcional)" },
+            React.createElement("textarea", { style: { ...inputStyle, minHeight: 60, resize: "vertical" }, value: note, onChange: (e) => setNote(e.target.value), placeholder: "Contacto, condiciones, lo que sea\u2026" })),
+        React.createElement(PrimaryBtn, { full: true, color: C.purple, onClick: () => { if (name.trim())
+                onSave({ name: name.trim(), type, baseCost: Number(baseCost || 0), note: note.trim() }); } },
+            React.createElement(Check, { size: 18, strokeWidth: 3, color: "#fff" }),
+            " ",
+            React.createElement("span", { style: { color: "#fff" } }, initial ? "Guardar" : "Crear")),
+        onDelete && React.createElement("button", { onClick: onDelete, style: { ...iconBtn, width: "100%", height: 46, marginTop: 10, gap: 8, fontWeight: 700, fontSize: 13.5, color: C.bad } },
+            React.createElement(Trash2, { size: 15 }),
+            " Borrar")));
+}
+function OrgEventForm({ initial, onSave, onDelete }) {
+    const [name, setName] = useState(initial ? initial.name : "");
+    const [date, setDate] = useState(initial && initial.date ? initial.date : todayISO());
+    const [income, setIncome] = useState(initial && initial.income != null ? String(initial.income) : "");
+    const [cost, setCost] = useState(initial && initial.cost != null ? String(initial.cost) : "");
+    const [note, setNote] = useState(initial ? (initial.note || "") : "");
+    const p = Number(income || 0) - Number(cost || 0);
+    return (React.createElement("div", null,
+        React.createElement(Field, { label: "Evento / colaboraci\u00F3n" },
+            React.createElement("input", { style: inputStyle, value: name, onChange: (e) => setName(e.target.value), placeholder: "Ej. Fiesta aniversario", autoFocus: true })),
+        React.createElement(Field, { label: "Fecha" },
+            React.createElement("input", { type: "date", style: inputStyle, value: date, onChange: (e) => setDate(e.target.value) })),
+        React.createElement("div", { style: { display: "flex", gap: 10 } },
+            React.createElement("div", { style: { flex: 1 } },
+                React.createElement(Field, { label: "Ingreso (\u20AC)" },
+                    React.createElement("input", { type: "number", inputMode: "decimal", style: inputStyle, value: income, onChange: (e) => setIncome(e.target.value), placeholder: "0,00" }))),
+            React.createElement("div", { style: { flex: 1 } },
+                React.createElement(Field, { label: "Coste (\u20AC)" },
+                    React.createElement("input", { type: "number", inputMode: "decimal", style: inputStyle, value: cost, onChange: (e) => setCost(e.target.value), placeholder: "0,00" })))),
+        React.createElement("div", { style: { ...card, padding: "10px 12px", background: C.ink, marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" } },
+            React.createElement("span", { style: { color: C.textLo, fontSize: 12.5, fontWeight: 700 } }, "Beneficio de este evento"),
+            React.createElement("span", { style: { color: p >= 0 ? C.good : C.bad, fontWeight: 900, fontSize: 15 } },
+                p >= 0 ? "+" : "",
+                money(p))),
+        React.createElement(Field, { label: "Nota (opcional)" },
+            React.createElement("input", { style: inputStyle, value: note, onChange: (e) => setNote(e.target.value), placeholder: "Detalle\u2026" })),
+        React.createElement(PrimaryBtn, { full: true, onClick: () => { if (name.trim() || income || cost)
+                onSave({ name: name.trim() || "Evento", date, income: Number(income || 0), cost: Number(cost || 0), note: note.trim() }); } },
+            React.createElement(Check, { size: 18, strokeWidth: 3 }),
+            " ",
+            initial ? "Guardar" : "Añadir evento"),
+        onDelete && React.createElement("button", { onClick: onDelete, style: { ...iconBtn, width: "100%", height: 46, marginTop: 10, gap: 8, fontWeight: 700, fontSize: 13.5, color: C.bad } },
+            React.createElement(Trash2, { size: 15 }),
+            " Borrar evento")));
+}
 function CollectionScreen({ state, dispatch }) {
     const [tab, setTab] = useState("colecciones");
     const [sheet, setSheet] = useState(null); // 'col' | 'item' | 'fiado'
     const [activeCol, setActiveCol] = useState(null);
+    const [editFiado, setEditFiado] = useState(null);
     return (React.createElement("div", { style: { padding: "20px 18px 0" } },
         React.createElement(Title, { kicker: "Lo que tienes y prestas" }, "Colecciones"),
-        React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 16 } },
+        React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 16, overflowX: "auto", paddingBottom: 4 } },
             React.createElement(Chip, { active: tab === "colecciones", onClick: () => setTab("colecciones") }, "Colecciones"),
+            React.createElement(Chip, { active: tab === "empresas", onClick: () => setTab("empresas") }, "Empresas y artistas"),
             React.createElement(Chip, { active: tab === "fiados", onClick: () => setTab("fiados") }, "Fiados")),
+        tab === "empresas" && React.createElement(OrgsPanel, { state: state, dispatch: dispatch }),
         tab === "colecciones" && (activeCol ? (React.createElement(ColDetail, { col: state.collections.find((c) => c.id === activeCol), onBack: () => setActiveCol(null), onAddItem: () => setSheet("item"), onDelItem: (iid) => {
                 const c = state.collections.find((c) => c.id === activeCol);
                 dispatch({ type: "update", col: "collections", id: activeCol, patch: { items: c.items.filter((i) => i.id !== iid) } });
             }, onUpdateItem: (iid, patch) => {
                 const c = state.collections.find((c) => c.id === activeCol);
                 dispatch({ type: "update", col: "collections", id: activeCol, patch: { items: c.items.map((i) => (i.id === iid ? { ...i, ...patch } : i)) } });
-            } })) : state.collections.length === 0 ? (React.createElement(EmptyState, { face: "happy", title: "Empieza tu colmena", sub: "Crea colecciones para todo lo que guardas: vinilos, cartas, monedas, sneakers\u2026 lo que sea.", cta: "Nueva colecci\u00F3n", onCta: () => setSheet("col") })) : (React.createElement("div", { style: { display: "grid", gap: 12 } },
+            }, onRename: (name) => dispatch({ type: "update", col: "collections", id: activeCol, patch: { name } }), onDeleteCol: () => { dispatch({ type: "remove", col: "collections", id: activeCol }); setActiveCol(null); } })) : state.collections.length === 0 ? (React.createElement(EmptyState, { face: "happy", title: "Empieza tu colmena", sub: "Crea colecciones para todo lo que guardas: vinilos, cartas, monedas, sneakers\u2026 lo que sea.", cta: "Nueva colecci\u00F3n", onCta: () => setSheet("col") })) : (React.createElement("div", { style: { display: "grid", gap: 12 } },
             state.collections.length > 1 && state.collections.some((c) => (c.items || []).some((i) => Number(i.value))) && (React.createElement(HBars, { icon: BarChart3, title: "Valor por colecci\u00F3n", sub: money(state.collections.reduce((s, c) => s + (c.items || []).reduce((a, i) => a + Number(i.value || 0), 0), 0)), data: state.collections.map((c) => { const v = (c.items || []).reduce((a, i) => a + Number(i.value || 0), 0); return { label: c.name, value: v, display: money(v) }; }).filter((d) => d.value > 0).sort((a, b) => b.value - a.value) })),
             state.collections.map((c) => {
                 const val = (c.items || []).reduce((s, i) => s + Number(i.value || 0), 0);
@@ -2903,10 +3572,12 @@ function CollectionScreen({ state, dispatch }) {
                         fmtDate(f.date)))),
             React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 10 } },
                 React.createElement("button", { onClick: () => dispatch({ type: "update", col: "fiados", id: f.id, patch: { returned: !f.returned } }), style: miniBtn(f.returned ? C.line : C.yellow, f.returned ? C.textLo : C.ink) }, f.returned ? "Devuelto ✓" : "Marcar devuelto"),
+                React.createElement("button", { onClick: () => { setEditFiado(f); setSheet("fiado"); }, style: { ...iconBtn, width: 32, height: 32, color: C.textLo } },
+                    React.createElement(Pencil, { size: 14 })),
                 React.createElement("button", { onClick: () => dispatch({ type: "remove", col: "fiados", id: f.id }), style: { ...iconBtn, width: 32, height: 32, color: C.textLo } },
                     React.createElement(Trash2, { size: 14 }))))))))),
         React.createElement("div", { style: { height: 122 } }),
-        !(tab === "colecciones" && activeCol) && (React.createElement(FAB, { onClick: () => setSheet(tab === "fiados" ? "fiado" : "col"), label: tab === "fiados" ? "Fiado" : "Colección" })),
+        tab !== "empresas" && !(tab === "colecciones" && activeCol) && (React.createElement(FAB, { onClick: () => { setEditFiado(null); setSheet(tab === "fiados" ? "fiado" : "col"); }, label: tab === "fiados" ? "Fiado" : "Colección" })),
         React.createElement(Sheet, { open: sheet === "col", onClose: () => setSheet(null), title: "Nueva colecci\u00F3n" },
             React.createElement(SimpleNameForm, { placeholder: "Ej. Vinilos, sneakers, cartas\u2026", onSave: (name) => { dispatch({ type: "add", col: "collections", item: { id: uid(), name, items: [] } }); setSheet(null); } })),
         React.createElement(Sheet, { open: sheet === "item", onClose: () => setSheet(null), title: "A\u00F1adir pieza" },
@@ -2915,10 +3586,15 @@ function CollectionScreen({ state, dispatch }) {
                     dispatch({ type: "update", col: "collections", id: activeCol, patch: { items: [{ id: uid(), ...d }, ...(c.items || [])] } });
                     setSheet(null);
                 } })),
-        React.createElement(Sheet, { open: sheet === "fiado", onClose: () => setSheet(null), title: "Nuevo fiado" },
-            React.createElement(FiadoForm, { onSave: (d) => { dispatch({ type: "add", col: "fiados", item: { id: uid(), date: todayISO(), returned: false, ...d } }); setSheet(null); } }))));
+        React.createElement(Sheet, { open: sheet === "fiado", onClose: () => { setSheet(null); setEditFiado(null); }, title: editFiado ? "Editar fiado" : "Nuevo fiado" },
+            React.createElement(FiadoForm, { initial: editFiado, onSave: (d) => { if (editFiado)
+                    dispatch({ type: "update", col: "fiados", id: editFiado.id, patch: d });
+                else
+                    dispatch({ type: "add", col: "fiados", item: { id: uid(), date: todayISO(), returned: false, ...d } }); setSheet(null); setEditFiado(null); }, onDelete: editFiado ? () => { dispatch({ type: "remove", col: "fiados", id: editFiado.id }); setSheet(null); setEditFiado(null); } : null }))));
 }
-function ColDetail({ col, onBack, onAddItem, onDelItem, onUpdateItem }) {
+function ColDetail({ col, onBack, onAddItem, onDelItem, onUpdateItem, onRename, onDeleteCol }) {
+    const [renaming, setRenaming] = useState(false);
+    const [nm, setNm] = useState("");
     if (!col)
         return null;
     const val = (col.items || []).reduce((s, i) => s + Number(i.value || 0), 0);
@@ -2926,15 +3602,25 @@ function ColDetail({ col, onBack, onAddItem, onDelItem, onUpdateItem }) {
         React.createElement("button", { onClick: onBack, style: { ...linkBtn, marginBottom: 12 } },
             React.createElement(ChevronLeft, { size: 16 }),
             " Colecciones"),
-        React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 14 } },
-            React.createElement("div", null,
+        renaming ? (React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 14 } },
+            React.createElement("input", { autoFocus: true, style: inputStyle, value: nm, onChange: (e) => setNm(e.target.value), placeholder: "Nombre de la colecci\u00F3n" }),
+            React.createElement("button", { onClick: () => { if (nm.trim())
+                    onRename(nm.trim()); setRenaming(false); }, style: { ...iconBtn, width: 46, height: 46, background: C.yellow, color: C.ink, borderColor: C.yellow } },
+                React.createElement(Check, { size: 18, strokeWidth: 3 })))) : (React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 14, gap: 8 } },
+            React.createElement("div", { style: { minWidth: 0 } },
                 React.createElement("h2", { style: { color: C.textHi, fontWeight: 900, fontSize: 24, margin: 0 } }, col.name),
                 React.createElement("div", { style: { color: C.textLo, fontSize: 13 } },
                     (col.items || []).length,
                     " piezas \u00B7 ",
                     money(val))),
-            React.createElement("button", { onClick: onAddItem, style: { ...iconBtn, width: 44, height: 44, background: C.yellow, color: C.ink, borderColor: C.yellow } },
-                React.createElement(Plus, { size: 22, strokeWidth: 3 }))),
+            React.createElement("div", { style: { display: "flex", gap: 8, flexShrink: 0 } },
+                React.createElement("button", { onClick: () => { setNm(col.name); setRenaming(true); }, title: "Renombrar", style: { ...iconBtn, width: 44, height: 44 } },
+                    React.createElement(Pencil, { size: 17 })),
+                React.createElement("button", { onClick: () => { if (typeof window === "undefined" || window.confirm(`¿Borrar la colección "${col.name}" y todas sus piezas?`))
+                        onDeleteCol(); }, title: "Borrar colecci\u00F3n", style: { ...iconBtn, width: 44, height: 44, color: C.bad } },
+                    React.createElement(Trash2, { size: 17 })),
+                React.createElement("button", { onClick: onAddItem, style: { ...iconBtn, width: 44, height: 44, background: C.yellow, color: C.ink, borderColor: C.yellow } },
+                    React.createElement(Plus, { size: 22, strokeWidth: 3 }))))),
         (col.items || []).length === 0 ? (React.createElement(EmptyState, { title: "Colecci\u00F3n vac\u00EDa", sub: "A\u00F1ade la primera pieza de esta colecci\u00F3n.", cta: "A\u00F1adir pieza", onCta: onAddItem })) : (React.createElement("div", { style: { display: "grid", gap: 10 } }, col.items.map((i) => React.createElement(CollectionItemCard, { key: i.id, item: i, onUpdate: (patch) => onUpdateItem(i.id, patch), onDel: () => onDelItem(i.id) })))),
         React.createElement("div", { style: { height: 80 } })));
 }
@@ -3014,9 +3700,9 @@ function ItemForm({ onSave }) {
             React.createElement(Check, { size: 18, strokeWidth: 3 }),
             " A\u00F1adir")));
 }
-function FiadoForm({ onSave }) {
-    const [item, setItem] = useState("");
-    const [person, setPerson] = useState("");
+function FiadoForm({ initial, onSave, onDelete }) {
+    const [item, setItem] = useState((initial === null || initial === void 0 ? void 0 : initial.item) || "");
+    const [person, setPerson] = useState((initial === null || initial === void 0 ? void 0 : initial.person) || "");
     return (React.createElement("div", null,
         React.createElement(Field, { label: "\u00BFQu\u00E9 prestas?" },
             React.createElement("input", { style: inputStyle, value: item, onChange: (e) => setItem(e.target.value), placeholder: "Objeto", autoFocus: true })),
@@ -3024,14 +3710,19 @@ function FiadoForm({ onSave }) {
             React.createElement("input", { style: inputStyle, value: person, onChange: (e) => setPerson(e.target.value), placeholder: "Nombre" })),
         React.createElement(PrimaryBtn, { full: true, onClick: () => item.trim() && person.trim() && onSave({ item: item.trim(), person: person.trim() }) },
             React.createElement(Check, { size: 18, strokeWidth: 3 }),
-            " Guardar")));
+            " ",
+            initial ? "Guardar cambios" : "Guardar"),
+        onDelete && React.createElement("button", { onClick: onDelete, style: { ...iconBtn, width: "100%", height: 44, marginTop: 10, gap: 8, fontWeight: 700, fontSize: 13.5, color: C.bad, borderColor: "rgba(255,92,92,.4)" } },
+            React.createElement(Trash2, { size: 16 }),
+            " Borrar fiado")));
 }
 /* ============================================================
    CEREBRO — Objetivos + Notas + Chat IA
    ============================================================ */
 function BrainScreen({ state, dispatch, ai }) {
     const [tab, setTab] = useState("objetivos");
-    const [sheet, setSheet] = useState(null); // 'goal' | 'note'
+    const [sheet, setSheet] = useState(null); // 'goal' | 'note' | 'habit'
+    const [editGoal, setEditGoal] = useState(null);
     const [chatOpen, setChatOpen] = useState(false);
     return (React.createElement("div", { style: { padding: "20px 18px 0" } },
         React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" } },
@@ -3042,7 +3733,7 @@ function BrainScreen({ state, dispatch, ai }) {
             React.createElement(Chip, { active: tab === "objetivos", onClick: () => setTab("objetivos"), accent: C.purple }, "Objetivos"),
             React.createElement(Chip, { active: tab === "habitos", onClick: () => setTab("habitos"), accent: C.purple }, "H\u00E1bitos"),
             React.createElement(Chip, { active: tab === "notas", onClick: () => setTab("notas"), accent: C.purple }, "Notas")),
-        tab === "objetivos" && (state.goals.length === 0 ? (React.createElement(EmptyState, { face: "happy", title: "\u00BFHacia d\u00F3nde vas?", sub: "Define objetivos y div\u00EDdelos en pasos. Brosin te lleva paso a paso.", cta: "Nuevo objetivo", onCta: () => setSheet("goal") })) : (React.createElement("div", { style: { display: "grid", gap: 12 } }, state.goals.map((g) => React.createElement(GoalCard, { key: g.id, g: g, dispatch: dispatch }))))),
+        tab === "objetivos" && (state.goals.length === 0 ? (React.createElement(EmptyState, { face: "happy", title: "\u00BFHacia d\u00F3nde vas?", sub: "Define objetivos y div\u00EDdelos en pasos. Brosin te lleva paso a paso.", cta: "Nuevo objetivo", onCta: () => setSheet("goal") })) : (React.createElement("div", { style: { display: "grid", gap: 12 } }, state.goals.map((g) => React.createElement(GoalCard, { key: g.id, g: g, dispatch: dispatch, onEdit: () => { setEditGoal(g); setSheet("goal"); } }))))),
         tab === "habitos" && (React.createElement(HabitsList, { habits: state.habits, dispatch: dispatch, onAdd: () => setSheet("habit") })),
         tab === "notas" && (state.notes.length === 0 ? (React.createElement(EmptyState, { face: "neutral", title: "B\u00F3veda vac\u00EDa", sub: "Guarda aqu\u00ED informaci\u00F3n valiosa: claves, ideas, lo que no quieres perder.", cta: "Nueva nota", onCta: () => setSheet("note") })) : (React.createElement("div", { style: { display: "grid", gap: 10 } }, [...state.notes].sort((a, b) => Number(b.pinned) - Number(a.pinned)).map((n) => (React.createElement("div", { key: n.id, style: { ...card, padding: 14, borderColor: n.pinned ? C.purple : C.line } },
             React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 } },
@@ -3056,23 +3747,27 @@ function BrainScreen({ state, dispatch, ai }) {
             n.photo && React.createElement("div", { style: { marginTop: 10 } },
                 React.createElement(Thumb, { src: n.photo, size: 64, radius: 12 })))))))),
         React.createElement("div", { style: { height: 122 } }),
-        React.createElement(FAB, { onClick: () => setSheet(tab === "notas" ? "note" : tab === "habitos" ? "habit" : "goal"), label: tab === "notas" ? "Nota" : tab === "habitos" ? "Hábito" : "Objetivo" }),
-        React.createElement(Sheet, { open: sheet === "goal", onClose: () => setSheet(null), title: "Nuevo objetivo" },
-            React.createElement(GoalForm, { onSave: (d) => { dispatch({ type: "add", col: "goals", item: { id: uid(), steps: [], ...d } }); setSheet(null); } })),
+        React.createElement(FAB, { onClick: () => { setEditGoal(null); setSheet(tab === "notas" ? "note" : tab === "habitos" ? "habit" : "goal"); }, label: tab === "notas" ? "Nota" : tab === "habitos" ? "Hábito" : "Objetivo" }),
+        React.createElement(Sheet, { open: sheet === "goal", onClose: () => { setSheet(null); setEditGoal(null); }, title: editGoal ? "Editar objetivo" : "Nuevo objetivo" },
+            React.createElement(GoalForm, { initial: editGoal, onSave: (d) => { if (editGoal)
+                    dispatch({ type: "update", col: "goals", id: editGoal.id, patch: d });
+                else
+                    dispatch({ type: "add", col: "goals", item: { id: uid(), steps: [], ...d } }); setSheet(null); setEditGoal(null); } })),
         React.createElement(Sheet, { open: sheet === "habit", onClose: () => setSheet(null), title: "Nuevo h\u00E1bito" },
             React.createElement(HabitForm, { onSave: (d) => { dispatch({ type: "add", col: "habits", item: { id: uid(), done: [], ...d } }); setSheet(null); } })),
         React.createElement(Sheet, { open: sheet === "note", onClose: () => setSheet(null), title: "Nueva nota" },
             React.createElement(NoteForm, { onSave: (d) => { dispatch({ type: "add", col: "notes", item: { id: uid(), pinned: false, date: todayISO(), ...d } }); setSheet(null); } })),
         chatOpen && React.createElement(ChatSheet, { onClose: () => setChatOpen(false), state: state, dispatch: dispatch })));
 }
-function GoalCard({ g, dispatch }) {
+function GoalCard({ g, dispatch, onEdit }) {
     const [newStep, setNewStep] = useState("");
-    const done = g.steps.filter((s) => s.done).length;
-    const pct = g.steps.length ? Math.round((done / g.steps.length) * 100) : 0;
-    const toggle = (sid) => dispatch({ type: "update", col: "goals", id: g.id, patch: { steps: g.steps.map((s) => s.id === sid ? { ...s, done: !s.done } : s) } });
+    const steps = Array.isArray(g.steps) ? g.steps : [];
+    const done = steps.filter((s) => s.done).length;
+    const pct = steps.length ? Math.round((done / steps.length) * 100) : 0;
+    const toggle = (sid) => dispatch({ type: "update", col: "goals", id: g.id, patch: { steps: steps.map((s) => s.id === sid ? { ...s, done: !s.done } : s) } });
     const addStep = () => { if (!newStep.trim())
-        return; dispatch({ type: "update", col: "goals", id: g.id, patch: { steps: [...g.steps, { id: uid(), text: newStep.trim(), done: false }] } }); setNewStep(""); };
-    const delStep = (sid) => dispatch({ type: "update", col: "goals", id: g.id, patch: { steps: g.steps.filter((s) => s.id !== sid) } });
+        return; dispatch({ type: "update", col: "goals", id: g.id, patch: { steps: [...steps, { id: uid(), text: newStep.trim(), done: false }] } }); setNewStep(""); };
+    const delStep = (sid) => dispatch({ type: "update", col: "goals", id: g.id, patch: { steps: steps.filter((s) => s.id !== sid) } });
     return (React.createElement("div", { style: { ...card, padding: 16 } },
         React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 } },
             React.createElement("div", { style: { flex: 1 } },
@@ -3081,7 +3776,7 @@ function GoalCard({ g, dispatch }) {
                     React.createElement("div", { style: { color: C.textHi, fontWeight: 800, fontSize: 16 } }, g.title)),
                 g.deadline && (() => {
                     const dd = daysFromNow(g.deadline);
-                    const complete = g.steps.length > 0 && g.steps.every((s) => s.done);
+                    const complete = steps.length > 0 && steps.every((s) => s.done);
                     const col = complete ? C.good : dd < 0 ? C.bad : dd <= 3 ? C.yellow : C.textLo;
                     const lbl = complete ? "conseguido" : dd < 0 ? `vencido hace ${-dd} día${-dd === 1 ? "" : "s"}` : dd === 0 ? "¡es hoy!" : `faltan ${dd} día${dd === 1 ? "" : "s"}`;
                     return React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, marginTop: 4 } },
@@ -3092,6 +3787,8 @@ function GoalCard({ g, dispatch }) {
                 })()),
             React.createElement("button", { onClick: () => dispatch({ type: "update", col: "goals", id: g.id, patch: { notif: g.notif === false } }), title: "Avisos de la meta", style: { ...iconBtn, width: 30, height: 30, color: g.notif === false ? C.textLo : C.purple, borderColor: g.notif === false ? C.line : C.purple } },
                 React.createElement(BellRing, { size: 14 })),
+            onEdit && React.createElement("button", { onClick: onEdit, title: "Editar objetivo", style: { ...iconBtn, width: 30, height: 30, color: C.textLo } },
+                React.createElement(Pencil, { size: 14 })),
             React.createElement("button", { onClick: () => dispatch({ type: "remove", col: "goals", id: g.id }), style: { ...iconBtn, width: 30, height: 30, color: C.textLo } },
                 React.createElement(Trash2, { size: 14 }))),
         React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, margin: "12px 0" } },
@@ -3100,7 +3797,7 @@ function GoalCard({ g, dispatch }) {
             React.createElement("span", { style: { color: C.purple, fontWeight: 800, fontSize: 12.5 } },
                 pct,
                 "%")),
-        React.createElement("div", { style: { display: "grid", gap: 6 } }, g.steps.map((s) => (React.createElement("div", { key: s.id, style: { display: "flex", alignItems: "center", gap: 10 } },
+        React.createElement("div", { style: { display: "grid", gap: 6 } }, steps.map((s) => (React.createElement("div", { key: s.id, style: { display: "flex", alignItems: "center", gap: 10 } },
             React.createElement("button", { onClick: () => toggle(s.id), style: { width: 22, height: 22, borderRadius: 7, flexShrink: 0, border: `2px solid ${s.done ? C.purple : C.line}`, background: s.done ? C.purple : "transparent", display: "grid", placeItems: "center", cursor: "pointer" } }, s.done && React.createElement(Check, { size: 13, color: "#fff", strokeWidth: 3.5 })),
             React.createElement("span", { style: { flex: 1, color: s.done ? C.textLo : C.textHi, fontSize: 13.5, textDecoration: s.done ? "line-through" : "none" } }, s.text),
             React.createElement("button", { onClick: () => delStep(s.id), style: { background: "none", border: "none", color: C.textLo, cursor: "pointer", padding: 4 } },
@@ -3110,11 +3807,11 @@ function GoalCard({ g, dispatch }) {
             React.createElement("button", { onClick: addStep, style: { ...iconBtn, width: 40, height: 40, background: C.purple, borderColor: C.purple } },
                 React.createElement(Plus, { size: 18, color: "#fff", strokeWidth: 3 })))));
 }
-function GoalForm({ onSave }) {
-    const [title, setTitle] = useState("");
-    const [deadline, setDeadline] = useState("");
-    const [why, setWhy] = useState("");
-    const [notif, setNotif] = useState(true);
+function GoalForm({ initial, onSave }) {
+    const [title, setTitle] = useState((initial === null || initial === void 0 ? void 0 : initial.title) || "");
+    const [deadline, setDeadline] = useState((initial === null || initial === void 0 ? void 0 : initial.deadline) || "");
+    const [why, setWhy] = useState((initial === null || initial === void 0 ? void 0 : initial.why) || "");
+    const [notif, setNotif] = useState((initial === null || initial === void 0 ? void 0 : initial.notif) !== false);
     return (React.createElement("div", null,
         React.createElement(Field, { label: "Objetivo" },
             React.createElement("input", { style: inputStyle, value: title, onChange: (e) => setTitle(e.target.value), placeholder: "\u00BFQu\u00E9 quieres conseguir?", autoFocus: true })),
@@ -3134,7 +3831,7 @@ function GoalForm({ onSave }) {
         React.createElement(PrimaryBtn, { full: true, color: C.purple, onClick: () => title.trim() && onSave({ title: title.trim(), deadline, why, notif }) },
             React.createElement(Check, { size: 18, strokeWidth: 3, color: "#fff" }),
             " ",
-            React.createElement("span", { style: { color: "#fff" } }, "Crear objetivo"))));
+            React.createElement("span", { style: { color: "#fff" } }, initial ? "Guardar cambios" : "Crear objetivo"))));
 }
 function NoteForm({ onSave }) {
     const [title, setTitle] = useState("");
@@ -3192,7 +3889,7 @@ function ChatSheet({ onClose, state, dispatch }) {
             setLoading(false);
         }
     };
-    return (React.createElement("div", { onClick: onClose, style: { position: "absolute", inset: 0, background: "rgba(0,0,0,.65)", zIndex: 50, display: "flex", flexDirection: "column", justifyContent: "flex-end", backdropFilter: "blur(2px)" } },
+    return (React.createElement("div", { onClick: onClose, style: { position: "absolute", inset: 0, background: "rgba(0,0,0,.65)", zIndex: 82, display: "flex", flexDirection: "column", justifyContent: "flex-end", backdropFilter: "blur(2px)" } },
         React.createElement("div", { onClick: (e) => e.stopPropagation(), style: { background: C.ink2, borderTopLeftRadius: 28, borderTopRightRadius: 28, height: "88%", display: "flex", flexDirection: "column", animation: "bsheet .28s cubic-bezier(.2,.9,.3,1)" } },
             React.createElement("div", { style: { padding: "14px 18px", borderBottom: `1px solid ${C.line}`, display: "flex", alignItems: "center", gap: 12 } },
                 React.createElement(BeeMark, { size: 38, face: "happy", color: C.purple }),
@@ -3356,6 +4053,7 @@ function ProfileScreen({ state, dispatch, onChangePin, hasPin, onResetAll, onRes
     const [backupOpen, setBackupOpen] = useState(false);
     const [cloudOpen, setCloudOpen] = useState(false);
     const [feedbackOpen, setFeedbackOpen] = useState(false);
+    const [pushOpen, setPushOpen] = useState(false);
     const totalItems = state.collections.reduce((s, c) => s + (c.items || []).length, 0);
     const stats = [
         { label: "Eventos", value: state.events.length },
@@ -3387,6 +4085,12 @@ function ProfileScreen({ state, dispatch, onChangePin, hasPin, onResetAll, onRes
                     React.createElement(BellRing, { size: 18, color: C.yellow })),
                 React.createElement("span", { style: { flex: 1, textAlign: "left", color: C.textHi, fontWeight: 700, fontSize: 14.5 } }, "Avisos y notificaciones"),
                 React.createElement("span", { style: { color: ((_a = state.profile.notif) === null || _a === void 0 ? void 0 : _a.enabled) ? C.good : C.textLo, fontSize: 12, fontWeight: 700, marginRight: 4 } }, ((_b = state.profile.notif) === null || _b === void 0 ? void 0 : _b.enabled) ? "ON" : "OFF"),
+                React.createElement(ChevronRight, { size: 18, color: C.textLo })),
+            React.createElement("button", { onClick: () => setPushOpen(true), style: { ...settingRow, borderColor: state.profile.pushOn ? C.good : C.line } },
+                React.createElement("div", { style: { width: 38, height: 38, borderRadius: 11, background: state.profile.pushOn ? "rgba(61,220,132,.15)" : C.ink3, display: "grid", placeItems: "center" } },
+                    React.createElement(BellRing, { size: 18, color: state.profile.pushOn ? C.good : C.purple })),
+                React.createElement("span", { style: { flex: 1, textAlign: "left", color: C.textHi, fontWeight: 700, fontSize: 14.5 } }, "Avisos en el m\u00F3vil (app cerrada)"),
+                React.createElement("span", { style: { color: state.profile.pushOn ? C.good : C.textLo, fontSize: 12, fontWeight: 700, marginRight: 4 } }, state.profile.pushOn ? "ON" : "Activar"),
                 React.createElement(ChevronRight, { size: 18, color: C.textLo })),
             React.createElement("button", { onClick: onChangePin, style: settingRow },
                 React.createElement("div", { style: { width: 38, height: 38, borderRadius: 11, background: C.ink3, display: "grid", placeItems: "center" } },
@@ -3432,7 +4136,74 @@ function ProfileScreen({ state, dispatch, onChangePin, hasPin, onResetAll, onRes
         React.createElement(Sheet, { open: backupOpen, onClose: () => setBackupOpen(false), title: "Copia de seguridad" },
             React.createElement(BackupPanel, { state: state, onMark: () => dispatch({ type: "profile", payload: { lastBackup: nowISO() } }), onRestore: (data) => { onRestore(data); setBackupOpen(false); } })),
         React.createElement(Sheet, { open: feedbackOpen, onClose: () => setFeedbackOpen(false), title: "Enviar feedback" },
-            React.createElement(FeedbackPanel, { name: state.profile.name }))));
+            React.createElement(FeedbackPanel, { name: state.profile.name })),
+        React.createElement(Sheet, { open: pushOpen, onClose: () => setPushOpen(false), title: "Avisos en el m\u00F3vil" },
+            React.createElement(PushPanel, { cloud: cloud, on: state.profile.pushOn, onOn: (v) => dispatch({ type: "profile", payload: { pushOn: v } }) }))));
+}
+function PushPanel({ cloud, on, onOn }) {
+    const [status, setStatus] = useState(on ? "ok" : null); // null | working | ok | error
+    const [msg, setMsg] = useState("");
+    const enable = async () => {
+        if (!pushSupported()) {
+            setStatus("error");
+            setMsg("Este navegador no soporta avisos push. En iPhone: ábrela desde el icono de la pantalla de inicio (instalada), no desde Safari.");
+            return;
+        }
+        if (!cloud || !cloud.user) {
+            setStatus("error");
+            setMsg("Primero activa tu Cuenta en la nube (en Perfil), y luego vuelve aquí a activar los avisos.");
+            return;
+        }
+        setStatus("working");
+        setMsg("");
+        try {
+            const sb = await getSupa();
+            const r = await enablePush(sb, cloud.user.id);
+            if (r.ok) {
+                setStatus("ok");
+                setMsg("¡Activados! Te llegarán aunque tengas la app cerrada o el móvil bloqueado.");
+                onOn && onOn(true);
+            }
+            else if (r.reason === "denied") {
+                setStatus("error");
+                setMsg("No diste permiso. En iPhone: Ajustes → Brosinos → Notificaciones (permitir), y reintenta.");
+            }
+            else if (r.reason === "unsupported") {
+                setStatus("error");
+                setMsg("En iPhone tienes que abrirla desde el icono instalado en la pantalla de inicio para poder activar avisos.");
+            }
+            else {
+                setStatus("error");
+                setMsg("No se pudo activar. Reintenta en un momento.");
+            }
+        }
+        catch (e) {
+            setStatus("error");
+            setMsg("Error al activar. Reintenta.");
+        }
+    };
+    return (React.createElement("div", null,
+        React.createElement("div", { style: { color: C.textLo, fontSize: 13.5, lineHeight: 1.55, marginBottom: 14 } },
+            "Activa esto para que Brosin te avise de eventos, cumplea\u00F1os y metas ",
+            React.createElement("b", { style: { color: C.textHi } }, "aunque tengas la app cerrada o el m\u00F3vil bloqueado"),
+            ". Necesitas tener la ",
+            React.createElement("b", { style: { color: C.textHi } }, "Cuenta en la nube"),
+            " activada."),
+        React.createElement(PrimaryBtn, { full: true, color: status === "ok" ? C.good : C.purple, onClick: enable }, status === "working" ? React.createElement(React.Fragment, null,
+            React.createElement("span", { style: { display: "inline-flex", animation: "bspin 1s linear infinite" } },
+                React.createElement(RefreshCcw, { size: 18 })),
+            " Activando\u2026") : status === "ok" ? React.createElement(React.Fragment, null,
+            React.createElement(Check, { size: 18, strokeWidth: 3 }),
+            " ",
+            React.createElement("span", null, "Avisos activados \u2713")) : React.createElement(React.Fragment, null,
+            React.createElement(BellRing, { size: 18 }),
+            " ",
+            React.createElement("span", { style: { color: "#fff" } }, "Activar avisos en el m\u00F3vil"))),
+        msg && React.createElement("div", { style: { marginTop: 12, color: status === "ok" ? C.good : C.textLo, fontSize: 13, lineHeight: 1.5 } }, msg),
+        status === "ok" && (React.createElement("button", { onClick: enable, style: { ...iconBtn, width: "auto", paddingInline: 14, height: 38, marginTop: 12, gap: 8, fontSize: 13, color: C.textLo } },
+            React.createElement(RefreshCcw, { size: 14 }),
+            " Reactivar en este m\u00F3vil")),
+        React.createElement("div", { style: { color: C.textLo, fontSize: 11.5, marginTop: 14, lineHeight: 1.5 } }, "Consejo: haz esto en el m\u00F3vil donde quieras recibir los avisos (uno por m\u00F3vil). Los avisos pueden tardar un poco en llegar; iPhone a veces los agrupa.")));
 }
 const FEEDBACK_WA = "34644466134";
 const FEEDBACK_EMAIL = "brosin420culture@gmail.com";
@@ -3508,23 +4279,61 @@ function NotifSettings({ notif, onChange }) {
             React.createElement("div", { style: { ...card, padding: 12, marginTop: 12, background: C.ink, fontSize: 12.5, color: C.textLo, lineHeight: 1.5 } }, "Brosin te avisa mientras la app est\u00E1 abierta o en segundo plano (seg\u00FAn tu m\u00F3vil). Para avisos con la app cerrada, a\u00F1\u00E1dela a tu pantalla de inicio (PWA) y permite notificaciones."))));
 }
 const settingRow = { ...card, padding: 12, display: "flex", alignItems: "center", gap: 12, cursor: "pointer", border: `1px solid ${C.line}` };
+function BackupConfirm({ data, onCancel, onRestore }) {
+    return (React.createElement("div", null,
+        React.createElement("div", { style: { ...card, padding: 14, marginBottom: 14 } },
+            React.createElement("div", { style: { color: C.textHi, fontWeight: 800, fontSize: 14.5, marginBottom: 8 } }, "Esta copia contiene:"),
+            React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 } }, Object.entries(countData(data)).map(([k, v]) => (React.createElement("div", { key: k, style: { color: C.textLo, fontSize: 12.5 } },
+                React.createElement("span", { style: { color: C.yellow, fontWeight: 800 } }, v),
+                " ",
+                k.toLowerCase()))))),
+        React.createElement("div", { style: { ...card, padding: 12, marginBottom: 14, border: `1px solid ${C.line}`, background: "rgba(61,220,132,.06)", color: C.textHi, fontSize: 12.5, lineHeight: 1.5 } }, "Tranquilo: antes de restaurar, Brosin guarda autom\u00E1ticamente una copia de lo que tienes ahora (por si acaso, la ver\u00E1s en \u201CAutom\u00E1ticas\u201D)."),
+        React.createElement(PrimaryBtn, { full: true, color: C.bad, onClick: () => onRestore(data) },
+            React.createElement(RefreshCcw, { size: 18, color: "#fff" }),
+            " ",
+            React.createElement("span", { style: { color: "#fff" } }, "Restaurar ahora")),
+        React.createElement("button", { onClick: onCancel, style: { ...iconBtn, width: "100%", height: 44, marginTop: 10, gap: 8, fontWeight: 700, fontSize: 13.5, color: C.textLo } }, "Cancelar")));
+}
 function BackupPanel({ state, onRestore, onMark }) {
-    const [tab, setTab] = useState("export"); // export | restore
+    const [tab, setTab] = useState("export"); // export | restore | auto
     const [copied, setCopied] = useState(false);
     const [code, setCode] = useState("");
     const [pending, setPending] = useState(null); // staged data awaiting confirm
     const [err, setErr] = useState(false);
-    const snapshot = () => { const { ready, ...rest } = state; return { app: "BrosinOS", v: 5, at: nowISO(), data: rest }; };
+    const [saveMsg, setSaveMsg] = useState(null); // {ok, t}
+    const [autos, setAutos] = useState([]);
+    const snapshot = () => { const { ready, ...rest } = state; return { app: "BrosinOS", v: 6, at: nowISO(), data: rest }; };
     const exportText = JSON.stringify(snapshot());
     const exportCode = encodeBackup(snapshot());
-    const doDownload = () => { downloadFile(`brosin-copia-${todayISO()}.json`, exportText); onMark && onMark(); };
+    const counts = countData(state);
+    const totalPieces = Object.values(counts).reduce((a, b) => a + b, 0);
+    const refreshAutos = () => { readAutoBaks().then(setAutos); };
+    useEffect(() => { refreshAutos(); }, []);
+    const doSave = async () => {
+        setSaveMsg({ ok: true, t: "Preparando copia…" });
+        const how = await saveBackup(`brosin-copia-${todayISO()}.json`, exportText);
+        onMark && onMark();
+        if (how === "shared")
+            setSaveMsg({ ok: true, t: "Elige “Guardar en Archivos” para dejarla en tu móvil." });
+        else if (how === "download")
+            setSaveMsg({ ok: true, t: "Copia descargada. Guárdala en un sitio seguro." });
+        else if (how === "open")
+            setSaveMsg({ ok: true, t: "Copia abierta: mantén pulsado y guárdala/compártela." });
+        else if (how === "cancel")
+            setSaveMsg(null);
+        else
+            setSaveMsg({ ok: false, t: "No pude guardar el archivo. Usa “Copiar como código” de abajo." });
+    };
+    const doDownload = () => { const ok = downloadFile(`brosin-copia-${todayISO()}.json`, exportText); onMark && onMark(); setSaveMsg(ok ? { ok: true, t: "Archivo descargado." } : { ok: false, t: "Tu móvil bloqueó la descarga directa. Prueba “Guardar / compartir” o copia el código." }); };
     const doCopy = () => { try {
         navigator.clipboard && navigator.clipboard.writeText(exportCode);
         setCopied(true);
         onMark && onMark();
         setTimeout(() => setCopied(false), 2000);
     }
-    catch (e) { } };
+    catch (e) {
+        setSaveMsg({ ok: false, t: "No pude copiar automáticamente." });
+    } };
     const stage = (obj) => {
         const data = obj && obj.data ? obj.data : obj;
         if (!data || typeof data !== "object" || !("profile" in data || "tx" in data || "events" in data)) {
@@ -3550,50 +4359,64 @@ function BackupPanel({ state, onRestore, onMark }) {
         e.target.value = "";
     };
     return (React.createElement("div", null,
-        React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 16 } },
-            React.createElement(Chip, { active: tab === "export", onClick: () => { setTab("export"); setPending(null); } }, "Guardar copia"),
-            React.createElement(Chip, { active: tab === "restore", onClick: () => { setTab("restore"); setPending(null); } }, "Restaurar")),
-        tab === "export" ? (React.createElement("div", null,
-            React.createElement("p", { style: { color: C.textLo, fontSize: 13.5, lineHeight: 1.55, marginTop: 0 } }, "Guarda TODO lo de la app (agenda, dinero, colecciones, equipo, objetivos\u2026) en un archivo o un c\u00F3digo. Gu\u00E1rdalo en sitio seguro o \u00FAsalo para pasar tus datos a otro m\u00F3vil."),
-            React.createElement(PrimaryBtn, { full: true, onClick: doDownload },
-                React.createElement(Download, { size: 18, strokeWidth: 2.6 }),
-                " Descargar archivo de copia"),
-            React.createElement("button", { onClick: doCopy, style: { ...iconBtn, width: "100%", height: 48, marginTop: 10, gap: 8, fontWeight: 800, fontSize: 14, background: C.ink2 } }, copied ? React.createElement(React.Fragment, null,
+        React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 16, overflowX: "auto" } },
+            React.createElement(Chip, { active: tab === "export", onClick: () => { setTab("export"); setPending(null); } }, "Guardar"),
+            React.createElement(Chip, { active: tab === "restore", onClick: () => { setTab("restore"); setPending(null); } }, "Restaurar"),
+            React.createElement(Chip, { active: tab === "auto", onClick: () => { setTab("auto"); setPending(null); refreshAutos(); } }, "Autom\u00E1ticas")),
+        tab === "export" && (React.createElement("div", null,
+            React.createElement("p", { style: { color: C.textLo, fontSize: 13.5, lineHeight: 1.55, marginTop: 0 } },
+                "Guarda TODO lo de la app (agenda, dinero, colecciones, empresas, equipo, objetivos\u2026). Ahora mismo hay ",
+                React.createElement("b", { style: { color: C.textHi } }, totalPieces),
+                " cosas guardadas."),
+            React.createElement(PrimaryBtn, { full: true, onClick: doSave },
+                React.createElement(Share2, { size: 18, strokeWidth: 2.6 }),
+                " Guardar / compartir copia"),
+            React.createElement("button", { onClick: doDownload, style: { ...iconBtn, width: "100%", height: 46, marginTop: 10, gap: 8, fontWeight: 800, fontSize: 13.5, background: C.ink2 } },
+                React.createElement(Download, { size: 16 }),
+                " Descargar archivo (ordenador)"),
+            React.createElement("button", { onClick: doCopy, style: { ...iconBtn, width: "100%", height: 46, marginTop: 10, gap: 8, fontWeight: 800, fontSize: 13.5, background: C.ink2 } }, copied ? React.createElement(React.Fragment, null,
                 React.createElement(Check, { size: 16, color: C.good }),
                 " C\u00F3digo copiado") : React.createElement(React.Fragment, null,
                 React.createElement(Copy, { size: 16 }),
                 " Copiar como c\u00F3digo")),
-            React.createElement("div", { style: { color: C.textLo, fontSize: 11.5, marginTop: 12, lineHeight: 1.5 } }, "Consejo: haz una copia de vez en cuando, sobre todo antes de reinstalar o cambiar de m\u00F3vil."))) : (React.createElement("div", null, !pending ? (React.createElement(React.Fragment, null,
-            React.createElement("p", { style: { color: C.textLo, fontSize: 13.5, lineHeight: 1.55, marginTop: 0 } }, "Recupera tus datos desde un archivo de copia o pegando el c\u00F3digo. Reemplazar\u00E1 lo que tengas ahora."),
+            saveMsg && (React.createElement("div", { style: { borderRadius: 12, padding: "10px 12px", marginTop: 12, fontSize: 12.8, background: saveMsg.ok ? "rgba(61,220,132,.12)" : "rgba(255,92,92,.1)", border: `1px solid ${saveMsg.ok ? C.good : C.bad}`, color: C.textHi } }, saveMsg.t)),
+            React.createElement("div", { style: { color: C.textLo, fontSize: 11.5, marginTop: 12, lineHeight: 1.5 } },
+                "En iPhone usa ",
+                React.createElement("b", { style: { color: C.textHi } }, "Guardar / compartir"),
+                " \u2192 \u201CGuardar en Archivos\u201D. Adem\u00E1s, Brosin guarda copias autom\u00E1ticas solo en tu m\u00F3vil (pesta\u00F1a \u201CAutom\u00E1ticas\u201D). Si tienes la nube activada, tus datos tambi\u00E9n viajan solos entre dispositivos."))),
+        tab === "restore" && (React.createElement("div", null, !pending ? (React.createElement(React.Fragment, null,
+            React.createElement("p", { style: { color: C.textLo, fontSize: 13.5, lineHeight: 1.55, marginTop: 0 } }, "Recupera tus datos desde un archivo de copia o pegando el c\u00F3digo."),
             React.createElement("label", { style: { ...inputStyle, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, cursor: "pointer", fontWeight: 800, color: C.textHi, marginBottom: 12 } },
                 React.createElement(Download, { size: 18 }),
                 " Elegir archivo de copia",
                 React.createElement("input", { type: "file", accept: ".json,application/json,text/plain", onChange: onFile, style: { display: "none" } })),
             React.createElement(Field, { label: "\u2026o pega el c\u00F3digo" },
                 React.createElement("textarea", { style: { ...inputStyle, minHeight: 90, resize: "vertical", fontFamily: "monospace", fontSize: 12 }, value: code, onChange: (e) => { setCode(e.target.value); setErr(false); }, placeholder: "BRSNBAK1:\u2026" })),
-            err && React.createElement("div", { style: { color: C.bad, fontSize: 12.5, marginBottom: 10 } }, "No reconozco esa copia. Revisa que est\u00E9 completa."),
+            err && React.createElement("div", { style: { color: C.bad, fontSize: 12.5, marginBottom: 10 } }, "No reconozco esa copia. Pega el c\u00F3digo completo (a veces se corta al copiar)."),
             React.createElement(PrimaryBtn, { full: true, color: C.ink3, onClick: () => { let obj = null; try {
                     obj = JSON.parse(code);
                 }
                 catch (x) {
                     obj = decodeBackup(code);
                 } stage(obj); } },
-                React.createElement("span", { style: { color: C.textHi } }, "Revisar copia")))) : (React.createElement("div", null,
-            React.createElement("div", { style: { ...card, padding: 14, marginBottom: 14 } },
-                React.createElement("div", { style: { color: C.textHi, fontWeight: 800, fontSize: 14.5, marginBottom: 8 } }, "Esta copia contiene:"),
-                React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 } }, Object.entries(countData(pending)).map(([k, v]) => (React.createElement("div", { key: k, style: { color: C.textLo, fontSize: 12.5 } },
-                    React.createElement("span", { style: { color: C.yellow, fontWeight: 800 } }, v),
-                    " ",
-                    k.toLowerCase()))))),
-            React.createElement("div", { style: { ...card, padding: 12, marginBottom: 14, border: `1px solid ${C.bad}`, background: "rgba(255,92,92,.08)", color: C.textHi, fontSize: 13, lineHeight: 1.5 } },
-                "Al restaurar, tus datos actuales se ",
-                React.createElement("b", null, "reemplazan"),
-                " por los de esta copia. Esto no se puede deshacer."),
-            React.createElement(PrimaryBtn, { full: true, color: C.bad, onClick: () => onRestore(pending) },
-                React.createElement(RefreshCcw, { size: 18, color: "#fff" }),
-                " ",
-                React.createElement("span", { style: { color: "#fff" } }, "Restaurar ahora")),
-            React.createElement("button", { onClick: () => setPending(null), style: { ...iconBtn, width: "100%", height: 44, marginTop: 10, gap: 8, fontWeight: 700, fontSize: 13.5, color: C.textLo } }, "Cancelar")))))));
+                React.createElement("span", { style: { color: C.textHi } }, "Revisar copia")))) : React.createElement(BackupConfirm, { data: pending, onCancel: () => setPending(null), onRestore: onRestore }))),
+        tab === "auto" && (React.createElement("div", null, pending ? React.createElement(BackupConfirm, { data: pending, onCancel: () => setPending(null), onRestore: onRestore }) : (React.createElement(React.Fragment, null,
+            React.createElement("p", { style: { color: C.textLo, fontSize: 13.5, lineHeight: 1.55, marginTop: 0 } }, "Copias que Brosin guarda solo, en este m\u00F3vil, cada poco tiempo y antes de cada restauraci\u00F3n. Si algo se pierde, recup\u00E9ralo aqu\u00ED."),
+            autos.length === 0 ? (React.createElement("div", { style: { ...card, padding: 16, textAlign: "center", color: C.textLo, fontSize: 13 } }, "A\u00FAn no hay copias autom\u00E1ticas. Se crear\u00E1n solas mientras usas la app.")) : (React.createElement("div", { style: { display: "grid", gap: 8 } }, autos.map((s, i) => {
+                const c = countData(s.data || {});
+                const tot = Object.values(c).reduce((a, b) => a + b, 0);
+                return (React.createElement("button", { key: i, onClick: () => stage(s.data), style: { ...card, padding: 12, textAlign: "left", cursor: "pointer", display: "flex", alignItems: "center", gap: 10 } },
+                    React.createElement("div", { style: { width: 34, height: 34, borderRadius: 10, background: C.ink3, display: "grid", placeItems: "center", flexShrink: 0 } },
+                        React.createElement(RefreshCcw, { size: 15, color: C.yellow })),
+                    React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                        React.createElement("div", { style: { color: C.textHi, fontWeight: 700, fontSize: 13.5 } }, i === 0 ? "Más reciente" : fmtDateTime(s.at)),
+                        React.createElement("div", { style: { color: C.textLo, fontSize: 11.5 } },
+                            fmtDateTime(s.at),
+                            " \u00B7 ",
+                            tot,
+                            " cosas")),
+                    React.createElement(ChevronRight, { size: 16, color: C.textLo })));
+            })))))))));
 }
 function CloudPanel({ cloud }) {
     const [email, setEmail] = useState((cloud.user && cloud.user.email) || "");
@@ -3832,7 +4655,7 @@ function DrivingScreen({ state, dispatch, back, toast }) {
             React.createElement(DriveContactForm, { onSave: (d) => { dispatch({ type: "drive", payload: { contacts: [...(drive.contacts || []), { id: uid(), ...d }] } }); setSheet(false); } }))));
 }
 function DriveZen({ drive, onClose }) {
-    return (React.createElement("div", { style: { position: "absolute", inset: 0, background: `linear-gradient(160deg, ${C.purple}, #4b0a8a)`, zIndex: 58, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 28, textAlign: "center" } },
+    return (React.createElement("div", { style: { position: "absolute", inset: 0, background: `linear-gradient(160deg, ${C.purple}, #4b0a8a)`, zIndex: 88, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 28, textAlign: "center" } },
         React.createElement("div", { style: { animation: "bfloat 3.5s ease-in-out infinite" } },
             React.createElement(BeeMark, { size: 96, face: "sleep", color: C.yellow })),
         React.createElement("h2", { style: { color: "#fff", fontWeight: 900, fontSize: 30, margin: "20px 0 6px", textTransform: "uppercase", letterSpacing: -0.5 } }, "Conduciendo"),
@@ -4121,6 +4944,7 @@ function BrosinOS() {
     const [lightbox, setLightbox] = useState(null);
     const [moneyTab, setMoneyTab] = useState("movimientos");
     const firstSave = useRef(true);
+    const lastSnap = useRef(0);
     const firedRef = useRef(new Set());
     const nagRef = useRef(0);
     const eventNagRef = useRef({});
@@ -4200,6 +5024,18 @@ function BrosinOS() {
         }, 900);
         return () => clearTimeout(id);
     }, [state, cloudUser]);
+    /* push: keep the server-side reminder schedule in sync (so avisos fire with the app closed) */
+    useEffect(() => {
+        if (!cloudUser || !state.ready)
+            return;
+        const id = setTimeout(async () => {
+            const sb = await getSupa();
+            if (!sb)
+                return;
+            syncReminders(sb, cloudUser.id, state);
+        }, 2000);
+        return () => clearTimeout(id);
+    }, [state.events, state.people, state.goals, cloudUser, state.ready]);
     const cloudSignIn = async (email, password) => {
         setCloudBusy(true);
         setCloudMsg(null);
@@ -4393,6 +5229,12 @@ function BrosinOS() {
         const id = setTimeout(() => {
             const { ready, ...persist } = state;
             store.set(STATE_KEY, persist);
+            // rolling safety snapshot at most once every 10 min
+            const now = Date.now();
+            if (now - lastSnap.current > 10 * 60 * 1000) {
+                lastSnap.current = now;
+                writeAutoBak(persist);
+            }
         }, 400);
         return () => clearTimeout(id);
     }, [state]);
@@ -4452,7 +5294,7 @@ function BrosinOS() {
                 tab === "pantalla" && React.createElement(ScreenTimeScreen, { state: state, dispatch: dispatch, back: () => setTab("home") }),
                 tab === "conduccion" && React.createElement(DrivingScreen, { state: state, dispatch: dispatch, back: () => setTab("home"), toast: pushToast }),
                 tab === "equipo" && React.createElement(TeamScreen, { state: state, dispatch: dispatch, back: () => setTab("home"), me: state.profile.name }),
-                tab === "perfil" && React.createElement(ProfileScreen, { state: state, dispatch: dispatch, hasPin: !!pin, onChangePin: () => setSettingPin(true), onResetAll: resetAll, cloud: cloud, onRestore: (data) => { dispatch({ type: "hydrate", payload: { ...EMPTY, ...data, ready: true } }); setTab("home"); } })))),
+                tab === "perfil" && React.createElement(ProfileScreen, { state: state, dispatch: dispatch, hasPin: !!pin, onChangePin: () => setSettingPin(true), onResetAll: resetAll, cloud: cloud, onRestore: (data) => { const { ready, ...cur } = state; writeAutoBak(cur); dispatch({ type: "hydrate", payload: { ...EMPTY, ...data, ready: true } }); setTab("home"); } })))),
             booted && !needsOnboarding && !locked && !settingPin && React.createElement(TabBar, { active: tab, onChange: setTab, ai: ai }),
             booted && !needsOnboarding && !locked && ((_a = state.drive) === null || _a === void 0 ? void 0 : _a.active) && React.createElement(DriveZen, { drive: state.drive, onClose: () => dispatch({ type: "drive", payload: { active: false } }) }),
             booted && !locked && !needsOnboarding && toasts.length > 0 && React.createElement(Toasts, { items: toasts, onDismiss: (id) => setToasts((t) => t.filter((x) => x.id !== id)) }),
