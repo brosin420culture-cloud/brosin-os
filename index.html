@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
 <title>Brosin OS</title>
 <meta name="description" content="Tu segundo cerebro. Bro, no te quedes sin." />
-<meta name="brosin-build" content="v22" />
+<meta name="brosin-build" content="v23" />
 <meta name="theme-color" content="#0a0a0a" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
@@ -59,7 +59,7 @@
 <div id="root">
   <div id="splash">
     <img class="bl" src="./brosin_eye.png" alt="Brosin" />
-    <div class="s">Despertando la colmena… · v22</div>
+    <div class="s">Despertando la colmena… · v23</div>
     <div class="l"></div>
   </div>
 </div>
@@ -612,6 +612,29 @@ function computeReminders(state) {
         [3, 1, 0].forEach((d) => { const gd = new Date(g.deadline + "T09:00:00"); if (isNaN(gd.getTime()))
             return; push(`gl:${g.id}:${d}`, new Date(gd.getTime() - d * 24 * 3600 * 1000), d === 0 ? `Hoy es la meta: ${g.title}` : `Se acerca: ${g.title}`, g.why ? "Recuerda: " + g.why : "A por ello."); });
     });
+    // "Tu día en 30 segundos": aviso matinal diario a la hora elegida (próximos 7 días)
+    const prof = state.profile || {};
+    if (prof.briefOn !== false) {
+        const parts = String(prof.briefTime || "08:30").split(":");
+        const bh = Number(parts[0]), bm = Number(parts[1]);
+        for (let d = 0; d < 7; d++) {
+            const day = new Date();
+            day.setDate(day.getDate() + d);
+            day.setHours(isFinite(bh) ? bh : 8, isFinite(bm) ? bm : 30, 0, 0);
+            const iso = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+            const evs = (state.events || []).filter((e) => !e.done && sameDay(e.date, iso));
+            const bds = (state.people || []).filter((p) => { if (!p.birthday || p.remind === false)
+                return false; const nb = nextBirthdayDate(p.birthday); return nb && nb.getMonth() === day.getMonth() && nb.getDate() === day.getDate(); });
+            const hb = (state.habits || []).length;
+            const bits = [];
+            if (evs.length)
+                bits.push(`${evs.length} evento${evs.length === 1 ? "" : "s"}`);
+            if (hb)
+                bits.push(`${hb} hábito${hb === 1 ? "" : "s"}`);
+            bds.forEach((p) => bits.push(`🎂 ${p.name}`));
+            push(`brief:${iso}`, day, "🐝 Tu día en 30 segundos", bits.length ? bits.join(" · ") : "Día despejado — elige tu jugada.");
+        }
+    }
     return out;
 }
 async function syncReminders(sb, userId, state) {
@@ -1870,6 +1893,84 @@ function ToolButton({ icon: Ico, label, accent, onClick, active, anim }) {
             playing && anim === "car" && React.createElement("span", { className: "broadfx" })),
         React.createElement("span", { style: { color: C.textLo, fontSize: 10.5, fontWeight: 600, textAlign: "center", lineHeight: 1.15 } }, label)));
 }
+/* "Tu día en 30 segundos" — el ritual matinal: todo lo de hoy en una tarjeta */
+function DailyBrief({ state, dispatch, streak, ai, go, onClose }) {
+    const t = todayISO();
+    const [aiLine, setAiLine] = useState(null);
+    useEffect(() => {
+        if (!ai)
+            return;
+        let alive = true;
+        callClaude([{ role: "user", content: "Dame UNA sola frase (máximo 22 palabras) de enfoque para mi día de hoy, concreta a mis datos, en español, sin comillas ni markdown." }], `Eres la mente de Brosin. Hoy es ${fmtLong()}. Sé concreto y útil, tono sereno.\n=== DATOS ===\n${buildMemory(state)}`)
+            .then((txt) => { if (alive && txt)
+            setAiLine(String(txt).trim().slice(0, 220)); })
+            .catch(() => { });
+        return () => { alive = false; };
+    }, []);
+    const evs = (state.events || []).filter((e) => sameDay(e.date, t)).sort((a, b) => (a.time || "").localeCompare(b.time || ""));
+    const habits = state.habits || [];
+    const hbPend = habits.filter((h) => !(h.done || []).includes(t));
+    const yesterday = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return dayISOOf(d); })();
+    const spentY = (state.tx || []).filter((x) => x.type === "gasto" && sameDay(x.date, yesterday)).reduce((s, x) => s + Number(x.amount || 0), 0);
+    const owedToMe = (state.debts || []).filter((d) => d.dir === "meDeben" && !d.settled).reduce((s, d) => s + Number(d.amount || 0), 0);
+    const bds = (state.people || []).map((p) => ({ p, d: daysUntilBirthday(p.birthday) })).filter((x) => x.d != null && x.d <= 7).sort((a, b) => a.d - b.d);
+    const nearGoal = (state.savings || []).map((h) => { const saved = (h.log || []).reduce((s, e) => s + Number(e.amount || 0), 0); const pct = h.target ? saved / h.target * 100 : 0; return { h, pct }; }).filter((x) => x.pct >= 80 && x.pct < 100);
+    const toggleHabit = (h) => { const set = new Set(h.done || []); if (set.has(t))
+        set.delete(t);
+    else
+        set.add(t); dispatch({ type: "update", col: "habits", id: h.id, patch: { done: [...set] } }); };
+    const Row = ({ icon, children }) => (React.createElement("div", { style: { display: "flex", gap: 10, alignItems: "flex-start", padding: "9px 0", borderBottom: `1px solid ${C.line}` } },
+        React.createElement("span", { style: { fontSize: 15, lineHeight: "20px" } }, icon),
+        React.createElement("div", { style: { flex: 1, minWidth: 0, color: C.textHi, fontSize: 13.5, lineHeight: 1.5 } }, children)));
+    return (React.createElement("div", null,
+        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 10 } },
+            React.createElement("div", { style: { flex: 1 } },
+                React.createElement("div", { style: { color: C.textLo, fontSize: 12, fontWeight: 700, textTransform: "capitalize" } }, fmtLong()),
+                React.createElement("div", { style: { color: C.textHi, fontWeight: 900, fontSize: 19 } },
+                    "Hola, ",
+                    state.profile.name || "Bro",
+                    " \u2014 tu d\u00EDa en 30s")),
+            React.createElement("span", { style: { fontSize: 13, fontWeight: 900, color: streak.activeToday ? C.yellow : C.textLo } },
+                "\uD83D\uDC1D ",
+                streak.count)),
+        aiLine && React.createElement("div", { style: { ...card, padding: "11px 13px", marginBottom: 10, background: C.tintP || "rgba(144,19,254,.08)", border: "1px solid rgba(144,19,254,.45)", color: C.textHi, fontSize: 13.5, lineHeight: 1.5 } },
+            "\u2728 ",
+            aiLine),
+        React.createElement("div", { style: { ...card, padding: "4px 14px 6px", marginBottom: 12 } },
+            React.createElement(Row, { icon: "\uD83D\uDCC5" }, evs.length === 0 ? React.createElement("span", { style: { color: C.textLo } }, "Sin eventos hoy \u2014 d\u00EDa despejado.") : evs.map((e) => (React.createElement("div", { key: e.id, style: { display: "flex", gap: 8, alignItems: "baseline" } },
+                React.createElement("span", { style: { color: C.yellow, fontWeight: 800, fontSize: 12.5, fontVariantNumeric: "tabular-nums", minWidth: 42 } }, e.time || "—"),
+                React.createElement("span", { style: { textDecoration: e.done ? "line-through" : "none", opacity: e.done ? 0.55 : 1 } }, e.title))))),
+            React.createElement(Row, { icon: "\uD83C\uDFAF" }, habits.length === 0 ? React.createElement("span", { style: { color: C.textLo } }, "Sin h\u00E1bitos a\u00FAn \u2014 crea el primero en Objetivos.") : hbPend.length === 0 ? React.createElement("span", { style: { color: C.good, fontWeight: 700 } }, "Todos los h\u00E1bitos hechos \u2713") : (React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } }, habits.map((h) => {
+                const done = (h.done || []).includes(t);
+                return (React.createElement("button", { key: h.id, onClick: () => toggleHabit(h), style: { borderRadius: 999, padding: "6px 12px", fontSize: 12.5, fontWeight: 800, cursor: "pointer", border: `1.5px solid ${done ? C.good : C.line}`, background: done ? "rgba(61,220,132,.15)" : "transparent", color: done ? C.good : C.textHi } },
+                    done ? "✓ " : "",
+                    h.name));
+            })))),
+            (spentY > 0 || owedToMe > 0) && (React.createElement(Row, { icon: "\uD83D\uDCB6" },
+                spentY > 0 && React.createElement("span", null,
+                    "Ayer gastaste ",
+                    React.createElement("b", { style: { color: C.textHi } }, money(spentY)),
+                    ". "),
+                owedToMe > 0 && React.createElement("span", null,
+                    "Te deben ",
+                    React.createElement("b", { style: { color: C.yellow } }, money(owedToMe)),
+                    "."))),
+            bds.length > 0 && (React.createElement(Row, { icon: "\uD83C\uDF82" }, bds.map(({ p, d }) => React.createElement("div", { key: p.id }, d === 0 ? React.createElement("b", { style: { color: C.purple } },
+                "\u00A1Hoy cumple ",
+                p.name,
+                "!") : d === 1 ? `Mañana cumple ${p.name}` : `${p.name} cumple en ${d} días`)))),
+            nearGoal.length > 0 && (React.createElement(Row, { icon: "\uD83D\uDC37" }, nearGoal.map(({ h, pct }) => React.createElement("div", { key: h.id },
+                "La hucha ",
+                React.createElement("b", { style: { color: C.textHi } }, h.name),
+                " va al ",
+                React.createElement("b", { style: { color: C.good } },
+                    Math.round(pct),
+                    "%"),
+                " \u2014 el empuj\u00F3n final."))))),
+        React.createElement("div", { style: { display: "flex", gap: 8 } },
+            React.createElement("button", { onClick: () => { onClose && onClose(); go && go("agenda"); }, style: miniBtn(C.ink3, C.textHi) }, "Ver agenda"),
+            React.createElement("button", { onClick: onClose, style: miniBtn(C.yellow, C.ink) }, "\u00A1A por el d\u00EDa! \uD83D\uDC1D"))));
+}
 function StreakPanel({ state, streak }) {
     const p = state.profile || {};
     const best = Math.max(p.streakBest || 0, streak.count, hiveBestStreak(state));
@@ -1903,7 +2004,21 @@ function HomeScreen({ state, dispatch, go, ai, openMarkets, toast }) {
     const [ideaOpen, setIdeaOpen] = useState(false);
     const [aiOpen, setAiOpen] = useState(false);
     const [streakOpen, setStreakOpen] = useState(false);
+    const [briefOpen, setBriefOpen] = useState(false);
     const streak = hiveStreak(state);
+    /* ritual matinal: se abre solo la primera vez del día (desde las 5:00), una vez */
+    useEffect(() => {
+        if (!state.ready)
+            return;
+        const p = state.profile || {};
+        if (p.briefOn === false)
+            return;
+        const t = todayISO();
+        if (p.briefSeen === t || new Date().getHours() < 5)
+            return;
+        const id = setTimeout(() => { setBriefOpen(true); dispatch({ type: "profile", payload: { briefSeen: t } }); }, 650);
+        return () => clearTimeout(id);
+    }, [state.ready]);
     const [homeTab, setHomeTab] = useState("hoy"); // hoy | semana | vistazo
     const pad = (n) => String(n).padStart(2, "0");
     const localISO = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -1940,7 +2055,7 @@ function HomeScreen({ state, dispatch, go, ai, openMarkets, toast }) {
                 React.createElement("span", { style: { color: streak.activeToday ? C.yellow : C.textLo, fontWeight: 900, fontSize: 13.5, fontVariantNumeric: "tabular-nums" } }, streak.count)),
             React.createElement("button", { onClick: () => go("perfil"), style: iconBtn },
                 React.createElement(Settings, { size: 18 }))),
-        React.createElement("div", { style: { marginBottom: 18 } },
+        React.createElement("button", { onClick: () => setBriefOpen(true), style: { display: "block", width: "100%", textAlign: "left", background: "none", border: "none", padding: 0, cursor: "pointer", marginBottom: 18 } },
             React.createElement("div", { style: { color: C.accentText, fontSize: 11.5, fontWeight: 800, letterSpacing: 3, textTransform: "uppercase", textShadow: C.mode === "dark" ? "0 0 12px rgba(255,212,0,.35)" : "none" } }, weekdayLong),
             React.createElement("div", { style: { display: "flex", alignItems: "baseline", gap: 8, marginTop: 2 } },
                 React.createElement("span", { style: { color: C.textHi, fontSize: 40, fontWeight: 900, lineHeight: 1, letterSpacing: -1.5, fontVariantNumeric: "tabular-nums" } }, now.getDate()),
@@ -1948,7 +2063,9 @@ function HomeScreen({ state, dispatch, go, ai, openMarkets, toast }) {
                     "de ",
                     monthLong),
                 React.createElement("span", { style: { flex: 1 } }),
-                React.createElement("span", { style: { color: C.textLo, fontSize: 12.5, fontWeight: 600 } }, todays.length ? `${todays.length} evento${todays.length === 1 ? "" : "s"} hoy` : "día libre"))),
+                React.createElement("span", { style: { color: C.textLo, fontSize: 12.5, fontWeight: 600 } },
+                    todays.length ? `${todays.length} evento${todays.length === 1 ? "" : "s"} hoy` : "día libre",
+                    " \u203A"))),
         ai && (React.createElement("button", { onClick: () => setAiOpen(true), style: { ...card, width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", marginBottom: 16, cursor: "pointer", border: "1px solid rgba(144,19,254,.5)", background: C.tintP, boxShadow: "0 1px 0 rgba(255,255,255,.07) inset, 0 6px 18px rgba(144,19,254,.16), 0 10px 26px rgba(0,0,0,.35)", textAlign: "left" } },
             React.createElement("div", { style: { width: 32, height: 32, borderRadius: 10, background: "linear-gradient(180deg,#a844ff,#7d10da)", boxShadow: "0 1px 0 rgba(255,255,255,.3) inset, 0 4px 10px rgba(144,19,254,.4)", display: "grid", placeItems: "center", flexShrink: 0 } },
                 React.createElement(Sparkles, { size: 16, color: "#fff" })),
@@ -2011,6 +2128,7 @@ function HomeScreen({ state, dispatch, go, ai, openMarkets, toast }) {
                 React.createElement(SleepCard, { state: state, dispatch: dispatch, toast: toast }),
                 React.createElement(DailyQuote, null)))),
         React.createElement("div", { style: { height: 24 } }),
+        React.createElement(Sheet, { open: briefOpen, onClose: () => setBriefOpen(false), title: "Tu d\u00EDa en 30 segundos" }, briefOpen && React.createElement(DailyBrief, { state: state, dispatch: dispatch, streak: streak, ai: ai, go: go, onClose: () => setBriefOpen(false) })),
         React.createElement(Sheet, { open: streakOpen, onClose: () => setStreakOpen(false), title: "Racha de la colmena" },
             React.createElement(StreakPanel, { state: state, streak: streak })),
         React.createElement(Sheet, { open: aiOpen, onClose: () => setAiOpen(false), title: "Dile a Brosin" },
@@ -4353,6 +4471,7 @@ function ProfileScreen({ state, dispatch, onChangePin, hasPin, onResetAll, onRes
     const [cloudOpen, setCloudOpen] = useState(false);
     const [feedbackOpen, setFeedbackOpen] = useState(false);
     const [pushOpen, setPushOpen] = useState(false);
+    const [briefCfgOpen, setBriefCfgOpen] = useState(false);
     const totalItems = state.collections.reduce((s, c) => s + (c.items || []).length, 0);
     const stats = [
         { label: "Eventos", value: state.events.length },
@@ -4390,6 +4509,12 @@ function ProfileScreen({ state, dispatch, onChangePin, hasPin, onResetAll, onRes
                     React.createElement(BellRing, { size: 18, color: state.profile.pushOn ? C.good : C.purple })),
                 React.createElement("span", { style: { flex: 1, textAlign: "left", color: C.textHi, fontWeight: 700, fontSize: 14.5 } }, "Avisos en el m\u00F3vil (app cerrada)"),
                 React.createElement("span", { style: { color: state.profile.pushOn ? C.good : C.textLo, fontSize: 12, fontWeight: 700, marginRight: 4 } }, state.profile.pushOn ? "ON" : "Activar"),
+                React.createElement(ChevronRight, { size: 18, color: C.textLo })),
+            React.createElement("button", { onClick: () => setBriefCfgOpen(true), style: settingRow },
+                React.createElement("div", { style: { width: 38, height: 38, borderRadius: 11, background: "rgba(255,212,0,.13)", display: "grid", placeItems: "center" } },
+                    React.createElement(Sun, { size: 18, color: C.yellow })),
+                React.createElement("span", { style: { flex: 1, textAlign: "left", color: C.textHi, fontWeight: 700, fontSize: 14.5 } }, "Tu d\u00EDa en 30 segundos"),
+                React.createElement("span", { style: { color: state.profile.briefOn === false ? C.textLo : C.good, fontSize: 12, fontWeight: 700, marginRight: 4 } }, state.profile.briefOn === false ? "OFF" : (state.profile.briefTime || "08:30")),
                 React.createElement(ChevronRight, { size: 18, color: C.textLo })),
             React.createElement("button", { onClick: () => dispatch({ type: "profile", payload: { theme: state.profile.theme === "light" ? "dark" : "light" } }), style: settingRow },
                 React.createElement("div", { style: { width: 38, height: 38, borderRadius: 11, background: C.ink3, display: "grid", placeItems: "center" } }, state.profile.theme === "light" ? React.createElement(Sun, { size: 18, color: C.yellow }) : React.createElement(Moon, { size: 18, color: C.yellow })),
@@ -4441,6 +4566,17 @@ function ProfileScreen({ state, dispatch, onChangePin, hasPin, onResetAll, onRes
             React.createElement(BackupPanel, { state: state, onMark: () => dispatch({ type: "profile", payload: { lastBackup: nowISO() } }), onRestore: (data) => { onRestore(data); setBackupOpen(false); } })),
         React.createElement(Sheet, { open: feedbackOpen, onClose: () => setFeedbackOpen(false), title: "Enviar feedback" },
             React.createElement(FeedbackPanel, { name: state.profile.name })),
+        React.createElement(Sheet, { open: briefCfgOpen, onClose: () => setBriefCfgOpen(false), title: "Tu d\u00EDa en 30 segundos" },
+            React.createElement("div", { style: { color: C.textLo, fontSize: 13.5, lineHeight: 1.55, marginBottom: 14 } },
+                "Cada ma\u00F1ana, Brosin te prepara ",
+                React.createElement("b", { style: { color: C.textHi } }, "tu d\u00EDa en una tarjeta"),
+                ": agenda, h\u00E1bitos para marcar al toque, dinero, cumplea\u00F1os y un consejo. Se abre sola la primera vez del d\u00EDa y te llega un aviso a la hora que elijas (si tienes los avisos activados)."),
+            React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 14 } },
+                React.createElement(Chip, { active: state.profile.briefOn !== false, onClick: () => dispatch({ type: "profile", payload: { briefOn: true } }) }, "Encendido"),
+                React.createElement(Chip, { active: state.profile.briefOn === false, onClick: () => dispatch({ type: "profile", payload: { briefOn: false } }) }, "Apagado")),
+            state.profile.briefOn !== false && (React.createElement(Field, { label: "Hora del aviso matinal" },
+                React.createElement("input", { type: "time", style: inputStyle, value: state.profile.briefTime || "08:30", onChange: (e) => dispatch({ type: "profile", payload: { briefTime: e.target.value || "08:30" } }) }))),
+            React.createElement("div", { style: { color: C.textLo, fontSize: 11.5, lineHeight: 1.5 } }, "Tambi\u00E9n puedes abrirla cuando quieras tocando la fecha grande del inicio.")),
         React.createElement(Sheet, { open: pushOpen, onClose: () => setPushOpen(false), title: "Avisos en el m\u00F3vil" },
             React.createElement(PushPanel, { cloud: cloud, on: state.profile.pushOn, onOn: (v) => dispatch({ type: "profile", payload: { pushOn: v } }) }))));
 }
@@ -5464,7 +5600,7 @@ function BrosinOS() {
             syncReminders(sb, cloudUser.id, state);
         }, 2000);
         return () => clearTimeout(id);
-    }, [state.events, state.people, state.goals, cloudUser, state.ready]);
+    }, [state.events, state.people, state.goals, state.habits, state.profile.briefOn, state.profile.briefTime, cloudUser, state.ready]);
     const cloudSignIn = async (email, password) => {
         setCloudBusy(true);
         setCloudMsg(null);
