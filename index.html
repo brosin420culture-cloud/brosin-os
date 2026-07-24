@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
 <title>Brosin OS</title>
 <meta name="description" content="Tu segundo cerebro. Bro, no te quedes sin." />
-<meta name="brosin-build" content="v20" />
+<meta name="brosin-build" content="v21" />
 <meta name="theme-color" content="#0a0a0a" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
@@ -59,7 +59,7 @@
 <div id="root">
   <div id="splash">
     <img class="bl" src="./brosin_eye.png" alt="Brosin" />
-    <div class="s">Despertando la colmena… · v20</div>
+    <div class="s">Despertando la colmena… · v21</div>
     <div class="l"></div>
   </div>
 </div>
@@ -4387,7 +4387,127 @@ function PushPanel({ cloud, on, onOn }) {
         status === "ok" && (React.createElement("button", { onClick: enable, style: { ...iconBtn, width: "auto", paddingInline: 14, height: 38, marginTop: 12, gap: 8, fontSize: 13, color: C.textLo } },
             React.createElement(RefreshCcw, { size: 14 }),
             " Reactivar en este m\u00F3vil")),
-        React.createElement("div", { style: { color: C.textLo, fontSize: 11.5, marginTop: 14, lineHeight: 1.5 } }, "Consejo: haz esto en el m\u00F3vil donde quieras recibir los avisos (uno por m\u00F3vil). Los avisos pueden tardar un poco en llegar; iPhone a veces los agrupa.")));
+        React.createElement("div", { style: { color: C.textLo, fontSize: 11.5, marginTop: 14, lineHeight: 1.5 } }, "Consejo: haz esto en el m\u00F3vil donde quieras recibir los avisos (uno por m\u00F3vil). Ojo: si borras y reinstalas la app, hay que volver a activarlos."),
+        React.createElement(PushDoctor, { cloud: cloud })));
+}
+/* Médico de avisos: comprueba toda la cadena desde ESTE móvil y dice qué falla */
+function PushDoctor({ cloud }) {
+    const [rows, setRows] = useState(null); // [{label, ok, fix}]
+    const [busy, setBusy] = useState(false);
+    const [test, setTest] = useState(null); // null | sending | sent | err
+    const run = async () => {
+        setBusy(true);
+        setRows(null);
+        setTest(null);
+        const out = [];
+        const add = (label, ok, fix) => out.push({ label, ok, fix: ok ? "" : fix });
+        try {
+            // 1) instalada como app
+            const standalone = (typeof window !== "undefined") && (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true);
+            add("Abierta como app instalada", !!standalone, "Ábrela desde su icono de la pantalla de inicio (no desde Safari). Si no la tienes: Safari → Compartir → Añadir a pantalla de inicio.");
+            // 2) soporte push
+            add("El móvil soporta avisos push", pushSupported(), "Este navegador no puede recibir push. En iPhone necesitas iOS 16.4 o superior y abrirla instalada.");
+            // 3) permiso
+            const perm = typeof Notification !== "undefined" ? Notification.permission : "unsupported";
+            add("Permiso de notificaciones concedido", perm === "granted", perm === "denied" ? "Está BLOQUEADO: Ajustes del iPhone → Notificaciones → Brosin → Permitir. Luego vuelve aquí." : "Aún no lo has dado: pulsa «Activar avisos» arriba y acepta.");
+            // 4) service worker
+            let reg = null;
+            try {
+                reg = await navigator.serviceWorker.getRegistration();
+            }
+            catch (e) { }
+            add("Motor de avisos (service worker) activo", !!(reg && reg.active), "Cierra la app del todo, ábrela con internet y repite la revisión.");
+            // 5) suscripción de ESTE móvil
+            let sub = null;
+            try {
+                sub = reg ? await reg.pushManager.getSubscription() : null;
+            }
+            catch (e) { }
+            add("Este móvil tiene suscripción de avisos", !!sub, "No hay suscripción (se pierde al reinstalar la app). Pulsa «Activar avisos» arriba y repite la revisión.");
+            // 6) nube iniciada
+            const user = cloud && cloud.user;
+            add("Cuenta en la nube iniciada", !!user, "Sin nube no hay avisos: en Perfil → Cuenta en la nube, entra con tu email, y vuelve.");
+            // 7-8) la nube responde + este móvil registrado + recordatorios futuros
+            if (user) {
+                try {
+                    const sb = await getSupa();
+                    const { data: subsData, error: e1 } = await sb.from("push_subs").select("endpoint").eq("user_id", user.id);
+                    if (e1)
+                        throw e1;
+                    add("La nube responde", true, "");
+                    const registered = !!(sub && (subsData || []).some((r) => r.endpoint === sub.endpoint));
+                    add("Este móvil está registrado en la nube", registered, "Pulsa «Activar avisos» arriba para registrarlo y repite.");
+                    const { count, error: e2 } = await sb.from("reminders").select("id", { count: "exact", head: true }).eq("user_id", user.id).eq("sent", false).gt("fire_at", new Date().toISOString());
+                    if (e2)
+                        throw e2;
+                    add(`Recordatorios futuros en cola (${count || 0})`, (count || 0) > 0, "No hay nada programado: crea un evento futuro con aviso, o usa el botón de prueba de abajo.");
+                }
+                catch (e) {
+                    add("La nube responde", false, "La base de datos no contesta. Suele ser el proyecto de Supabase dormido: entra en supabase.com → tu proyecto → botón «Restore/Resume», espera 2 min y repite.");
+                }
+            }
+            // 9-10) servidor de brosinos.com
+            try {
+                const r = await fetch("/api/claude", { method: "GET" });
+                const j = await r.json().catch(() => null);
+                add("Servidor de la app en marcha", !!(r.ok && j && j.ok), "brosinos.com/api no responde bien. Dímelo a mí (Claude) y lo reviso en el servidor.");
+            }
+            catch (e) {
+                add("Servidor de la app en marcha", false, "Sin conexión con brosinos.com/api. ¿Tienes internet? Si sí, dímelo y lo reviso.");
+            }
+            try {
+                const r2 = await fetch("/api/pending", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ endpoint: (sub && sub.endpoint) || "diag" }) });
+                const j2 = await r2.json().catch(() => null);
+                add("Canal de mensajes de avisos listo", !!(r2.ok && j2 && Array.isArray(j2.items)), "El canal /api/pending falla. Dímelo y lo arreglo en el servidor.");
+            }
+            catch (e) {
+                add("Canal de mensajes de avisos listo", false, "El canal /api/pending no responde. Dímelo y lo reviso.");
+            }
+        }
+        catch (e) { }
+        setRows(out);
+        setBusy(false);
+    };
+    const sendTest = async () => {
+        if (!cloud || !cloud.user) {
+            setTest("err");
+            return;
+        }
+        setTest("sending");
+        try {
+            const sb = await getSupa();
+            const { error } = await sb.from("reminders").insert({ user_id: cloud.user.id, rkey: "test:" + uid(), fire_at: new Date(Date.now() + 5000).toISOString(), title: "🐝 ¡Los avisos funcionan!", body: "Prueba enviada desde el diagnóstico de Brosinos." });
+            if (error)
+                throw error;
+            setTest("sent");
+        }
+        catch (e) {
+            setTest("err");
+        }
+    };
+    const fails = (rows || []).filter((r) => !r.ok).length;
+    return (React.createElement("div", { style: { marginTop: 18, borderTop: `1px solid ${C.line}`, paddingTop: 16 } },
+        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 10 } },
+            React.createElement(Activity, { size: 16, color: C.yellow }),
+            React.createElement("span", { style: { color: C.textHi, fontWeight: 800, fontSize: 14, flex: 1 } }, "\u00BFNo te llegan? Diagn\u00F3stico")),
+        React.createElement("button", { onClick: busy ? undefined : run, style: { ...iconBtn, width: "100%", height: 44, gap: 8, fontWeight: 800, fontSize: 13.5, background: C.ink3, opacity: busy ? 0.6 : 1 } }, busy ? React.createElement(React.Fragment, null,
+            React.createElement("span", { style: { display: "inline-flex", animation: "bspin 1s linear infinite" } },
+                React.createElement(RefreshCcw, { size: 15 })),
+            " Revisando\u2026") : React.createElement(React.Fragment, null,
+            React.createElement(Activity, { size: 15 }),
+            " Revisar el sistema de avisos")),
+        rows && (React.createElement("div", { style: { marginTop: 12 } },
+            React.createElement("div", { style: { ...card, padding: "10px 12px", marginBottom: 10, background: fails === 0 ? "rgba(61,220,132,.1)" : "rgba(255,92,92,.08)", border: `1px solid ${fails === 0 ? C.good : C.bad}`, color: C.textHi, fontSize: 13, fontWeight: 700 } }, fails === 0 ? "Todo en orden ✓ — lanza el aviso de prueba de abajo." : `${fails} problema${fails === 1 ? "" : "s"} encontrado${fails === 1 ? "" : "s"} — mira las ✗ y sigue su instrucción.`),
+            React.createElement("div", { style: { display: "grid", gap: 6 } }, rows.map((r, i) => (React.createElement("div", { key: i, style: { ...card, padding: "9px 12px", background: C.ink } },
+                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+                    r.ok ? React.createElement(Check, { size: 15, color: C.good, strokeWidth: 3 }) : React.createElement(X, { size: 15, color: C.bad, strokeWidth: 3 }),
+                    React.createElement("span", { style: { color: r.ok ? C.textLo : C.textHi, fontSize: 12.5, fontWeight: 700, flex: 1 } }, r.label)),
+                !r.ok && r.fix && React.createElement("div", { style: { color: C.textLo, fontSize: 12, marginTop: 5, lineHeight: 1.45, paddingLeft: 23 } }, r.fix))))))),
+        React.createElement("button", { onClick: test === "sending" ? undefined : sendTest, style: { ...iconBtn, width: "100%", height: 44, marginTop: 12, gap: 8, fontWeight: 800, fontSize: 13.5, background: "rgba(144,19,254,.18)", borderColor: C.purple, color: C.textHi } }, test === "sending" ? "Enviando…" : React.createElement(React.Fragment, null,
+            React.createElement(BellRing, { size: 15, color: C.purple }),
+            " Enviar aviso de prueba (~1 min)")),
+        test === "sent" && React.createElement("div", { style: { color: C.good, fontSize: 12.5, marginTop: 8, lineHeight: 1.5, fontWeight: 700 } }, "Enviado. CIERRA la app del todo y BLOQUEA el m\u00F3vil: el aviso debe llegar en ~1 minuto. Si no llega, vuelve y pasa la revisi\u00F3n."),
+        test === "err" && React.createElement("div", { style: { color: C.bad, fontSize: 12.5, marginTop: 8 } }, "No pude programarlo. \u00BFTienes la nube iniciada? Pasa la revisi\u00F3n de arriba.")));
 }
 const FEEDBACK_WA = "34644466134";
 const FEEDBACK_EMAIL = "brosin420culture@gmail.com";
