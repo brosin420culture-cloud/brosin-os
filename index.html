@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
 <title>Brosin OS</title>
 <meta name="description" content="Tu segundo cerebro. Bro, no te quedes sin." />
-<meta name="brosin-build" content="v21" />
+<meta name="brosin-build" content="v22" />
 <meta name="theme-color" content="#0a0a0a" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
@@ -59,7 +59,7 @@
 <div id="root">
   <div id="splash">
     <img class="bl" src="./brosin_eye.png" alt="Brosin" />
-    <div class="s">Despertando la colmena… · v21</div>
+    <div class="s">Despertando la colmena… · v22</div>
     <div class="l"></div>
   </div>
 </div>
@@ -627,6 +627,58 @@ async function syncReminders(sb, userId, state) {
     catch (e) {
         return false;
     }
+}
+/* ---------- Racha de la colmena (racha global de días activos) ----------
+   Un día cuenta si completaste al menos 1 hábito o 1 evento ese día.
+   Congeladores: perdonan automáticamente un día fallado (se ganan por constancia). */
+const dayISOOf = (d) => { const p = (n) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; };
+const wasActiveOn = (state, iso) => {
+    if ((state.habits || []).some((h) => (h.done || []).includes(iso)))
+        return true;
+    if ((state.events || []).some((e) => e.done && sameDay(e.date, iso)))
+        return true;
+    return false;
+};
+function hiveStreak(state, now = new Date()) {
+    const saved = new Set(((state.profile || {}).streakSaved) || []);
+    const todayIso = dayISOOf(now);
+    const activeToday = wasActiveOn(state, todayIso);
+    let count = 0;
+    const cursor = new Date(now);
+    if (activeToday) {
+        count = 1;
+    }
+    cursor.setDate(cursor.getDate() - 1); // ayer hacia atrás (hoy aún está "en juego" si no hay actividad)
+    for (let i = 0; i < 3700; i++) {
+        const iso = dayISOOf(cursor);
+        if (wasActiveOn(state, iso) || saved.has(iso)) {
+            count++;
+            cursor.setDate(cursor.getDate() - 1);
+        }
+        else
+            break;
+    }
+    return { count, activeToday, todayIso };
+}
+function hiveBestStreak(state) {
+    const days = new Set(((state.profile || {}).streakSaved) || []);
+    (state.habits || []).forEach((h) => (h.done || []).forEach((d) => days.add(d)));
+    (state.events || []).forEach((e) => { if (e.done && e.date)
+        days.add(String(e.date).slice(0, 10)); });
+    const arr = [...days].sort();
+    let best = 0, run = 0, prev = null;
+    arr.forEach((d) => {
+        if (prev) {
+            const diff = (new Date(d + "T00:00:00") - new Date(prev + "T00:00:00")) / 86400000;
+            run = diff === 1 ? run + 1 : 1;
+        }
+        else
+            run = 1;
+        if (run > best)
+            best = run;
+        prev = d;
+    });
+    return best;
 }
 /* ---------- Claude ----------
    Inside Claude.ai: direct keyless call (auto-auth).
@@ -1818,11 +1870,40 @@ function ToolButton({ icon: Ico, label, accent, onClick, active, anim }) {
             playing && anim === "car" && React.createElement("span", { className: "broadfx" })),
         React.createElement("span", { style: { color: C.textLo, fontSize: 10.5, fontWeight: 600, textAlign: "center", lineHeight: 1.15 } }, label)));
 }
+function StreakPanel({ state, streak }) {
+    const p = state.profile || {};
+    const best = Math.max(p.streakBest || 0, streak.count, hiveBestStreak(state));
+    const freezes = p.streakFreezes || 0;
+    const savedCount = (p.streakSaved || []).length;
+    const toNext = 7 - (streak.count % 7 || 7) + (streak.count % 7 === 0 ? 7 : 0);
+    return (React.createElement("div", null,
+        React.createElement("div", { style: { textAlign: "center", padding: "6px 0 16px" } },
+            React.createElement("div", { style: { fontSize: 46, lineHeight: 1 } }, "\uD83D\uDC1D"),
+            React.createElement("div", { style: { color: C.textHi, fontWeight: 900, fontSize: 44, lineHeight: 1.1, marginTop: 6, fontVariantNumeric: "tabular-nums" } }, streak.count),
+            React.createElement("div", { style: { color: C.textLo, fontSize: 13, fontWeight: 700 } }, streak.count === 1 ? "día de racha" : "días de racha"),
+            React.createElement("div", { style: { marginTop: 10, display: "inline-block", borderRadius: 999, padding: "6px 14px", fontSize: 12.5, fontWeight: 800, background: streak.activeToday ? "rgba(61,220,132,.14)" : "rgba(255,212,0,.12)", border: `1px solid ${streak.activeToday ? C.good : C.yellow}`, color: streak.activeToday ? C.good : C.yellow } }, streak.activeToday ? "Hoy ya cuenta ✓" : "Hoy aún en juego — completa 1 hábito o evento")),
+        React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 } },
+            React.createElement(MiniStat, { label: "MEJOR RACHA", val: String(best), col: C.yellow }),
+            React.createElement(MiniStat, { label: "CONGELADORES", val: `${freezes}/2`, col: C.textHi }),
+            React.createElement(MiniStat, { label: "D\u00CDAS SALVADOS", val: String(savedCount), col: C.purple })),
+        React.createElement("div", { style: { ...card, padding: 14, background: C.ink, fontSize: 12.5, color: C.textLo, lineHeight: 1.6 } },
+            React.createElement("b", { style: { color: C.textHi } }, "C\u00F3mo funciona:"),
+            " cada d\u00EDa que completas al menos ",
+            React.createElement("b", { style: { color: C.textHi } }, "1 h\u00E1bito o 1 evento"),
+            ", la racha suma. Cada ",
+            React.createElement("b", { style: { color: C.yellow } }, "7 d\u00EDas"),
+            " ganas un ",
+            React.createElement("b", { style: { color: C.textHi } }, "congelador"),
+            " (m\u00E1x. 2): si un d\u00EDa no puedes, se gasta solo y tu racha sobrevive. ",
+            streak.count > 0 ? `Te faltan ${toNext} día${toNext === 1 ? "" : "s"} para el próximo congelador.` : "Empieza hoy: marca cualquier hábito o evento.")));
+}
 function HomeScreen({ state, dispatch, go, ai, openMarkets, toast }) {
     var _a;
     const [calcOpen, setCalcOpen] = useState(false);
     const [ideaOpen, setIdeaOpen] = useState(false);
     const [aiOpen, setAiOpen] = useState(false);
+    const [streakOpen, setStreakOpen] = useState(false);
+    const streak = hiveStreak(state);
     const [homeTab, setHomeTab] = useState("hoy"); // hoy | semana | vistazo
     const pad = (n) => String(n).padStart(2, "0");
     const localISO = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -1854,6 +1935,9 @@ function HomeScreen({ state, dispatch, go, ai, openMarkets, toast }) {
                     greet,
                     ","),
                 React.createElement("div", { style: { color: C.textHi, fontSize: 20, fontWeight: 900, lineHeight: 1.05, textTransform: "capitalize", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, state.profile.name || "Bro")),
+            React.createElement("button", { onClick: () => setStreakOpen(true), style: { ...iconBtn, width: "auto", paddingInline: 11, gap: 5, borderColor: streak.activeToday ? C.yellow : C.line, background: streak.activeToday ? "rgba(255,212,0,.14)" : C.ink3 }, title: "Racha de la colmena" },
+                React.createElement("span", { style: { fontSize: 14, filter: streak.activeToday ? "none" : "grayscale(1)", opacity: streak.activeToday ? 1 : 0.65 } }, "\uD83D\uDC1D"),
+                React.createElement("span", { style: { color: streak.activeToday ? C.yellow : C.textLo, fontWeight: 900, fontSize: 13.5, fontVariantNumeric: "tabular-nums" } }, streak.count)),
             React.createElement("button", { onClick: () => go("perfil"), style: iconBtn },
                 React.createElement(Settings, { size: 18 }))),
         React.createElement("div", { style: { marginBottom: 18 } },
@@ -1927,6 +2011,8 @@ function HomeScreen({ state, dispatch, go, ai, openMarkets, toast }) {
                 React.createElement(SleepCard, { state: state, dispatch: dispatch, toast: toast }),
                 React.createElement(DailyQuote, null)))),
         React.createElement("div", { style: { height: 24 } }),
+        React.createElement(Sheet, { open: streakOpen, onClose: () => setStreakOpen(false), title: "Racha de la colmena" },
+            React.createElement(StreakPanel, { state: state, streak: streak })),
         React.createElement(Sheet, { open: aiOpen, onClose: () => setAiOpen(false), title: "Dile a Brosin" },
             React.createElement(HomeAI, { ai: ai, state: state, dispatch: dispatch, toast: toast })),
         React.createElement(Sheet, { open: calcOpen, onClose: () => setCalcOpen(false), title: "Calculadora" },
@@ -2102,7 +2188,10 @@ Cada acción es UNO de estos objetos:
 - {"type":"tx","txType":"gasto"|"ingreso","amount":number,"note":"...","category":"General"|"Comida"|"Ocio"|"Hogar"|"Transporte"|"Nómina"|"Negocio"|"Colección"}
 - {"type":"note","title":"...","body":"..."}
 - {"type":"goal","title":"...","deadline":"YYYY-MM-DD"|null}
-Reglas: interpreta fechas relativas ("mañana","el día 20","el viernes que viene") a fecha real a partir de hoy. No inventes importes, fechas ni horas que el usuario no haya dicho (si falta la hora, usa null). Puedes devolver varias acciones si lo pide. Si no hay ninguna acción clara, devuelve "actions":[] y una "reply" pidiendo el detalle que falte. Sé conciso.
+- {"type":"debt","dir":"meDeben"|"yoDebo","person":"...","amount":number,"note":"..."}  (alguien me debe / yo debo)
+- {"type":"saving","name":"...","amount":number}  (meter dinero en una hucha; amount negativo = sacar)
+- {"type":"habit","name":"..."}  (marcar un hábito como hecho HOY)
+Reglas: interpreta fechas relativas ("mañana","el día 20","el viernes que viene") a fecha real a partir de hoy. No inventes importes, fechas ni horas que el usuario no haya dicho (si falta la hora, usa null). DESCOMPÓN frases con varias cosas en VARIAS acciones: "pagué 40 de la cena con Marcos y me debe la mitad" => tx(gasto 40) + debt(meDeben, Marcos, 20). Para saving/habit usa el nombre tal cual lo diga (se buscará el más parecido). Si no hay ninguna acción clara, devuelve "actions":[] y una "reply" pidiendo el detalle que falte. Sé conciso.
 === CONTEXTO ACTUAL ===
 ${buildMemory(state)}`;
         try {
@@ -2136,6 +2225,37 @@ ${buildMemory(state)}`;
                     dispatch({ type: "add", col: "goals", item: { id: uid(), steps: [], title: a.title, deadline: a.deadline || "" } });
                     done++;
                     labels.push(`🎯 ${a.title}`);
+                }
+                else if (a.type === "debt" && a.person && a.amount) {
+                    dispatch({ type: "add", col: "debts", item: { id: uid(), date: todayISO(), settled: false, dir: a.dir === "yoDebo" ? "yoDebo" : "meDeben", person: String(a.person), amount: Number(a.amount), note: a.note || "" } });
+                    done++;
+                    labels.push(`🤝 ${a.dir === "yoDebo" ? "Debo a" : "Me debe"} ${a.person}: ${money(Number(a.amount))}`);
+                }
+                else if (a.type === "saving" && a.amount) {
+                    const norm = (s) => String(s || "").toLowerCase().trim();
+                    const target = (state.savings || []).find((h) => norm(h.name) === norm(a.name)) || (state.savings || []).find((h) => norm(h.name).includes(norm(a.name)) || norm(a.name).includes(norm(h.name)));
+                    const entry = { id: uid(), date: todayISO(), amount: Number(a.amount) };
+                    if (target) {
+                        dispatch({ type: "update", col: "savings", id: target.id, patch: { log: [entry, ...(target.log || [])] } });
+                        done++;
+                        labels.push(`🐷 ${target.name}: ${Number(a.amount) >= 0 ? "+" : ""}${money(Number(a.amount))}`);
+                    }
+                    else if (a.name) {
+                        dispatch({ type: "add", col: "savings", item: { id: uid(), name: String(a.name), target: 0, deadline: "", log: [entry] } });
+                        done++;
+                        labels.push(`🐷 Nueva hucha "${a.name}": ${money(Number(a.amount))}`);
+                    }
+                }
+                else if (a.type === "habit" && a.name) {
+                    const norm = (s) => String(s || "").toLowerCase().trim();
+                    const hb = (state.habits || []).find((h) => norm(h.name) === norm(a.name)) || (state.habits || []).find((h) => norm(h.name).includes(norm(a.name)) || norm(a.name).includes(norm(h.name)));
+                    if (hb) {
+                        const set = new Set(hb.done || []);
+                        set.add(todayISO());
+                        dispatch({ type: "update", col: "habits", id: hb.id, patch: { done: [...set] } });
+                        done++;
+                        labels.push(`✅ Hábito: ${hb.name}`);
+                    }
                 }
             });
             setReply({ text: j.reply || (done ? "Hecho." : "No pillé una acción clara, dime algo más concreto."), labels });
@@ -5547,6 +5667,60 @@ function BrosinOS() {
         }, 400);
         return () => clearTimeout(id);
     }, [state]);
+    /* racha de la colmena: congelador automático, premios y mejor marca */
+    useEffect(() => {
+        if (!state.ready)
+            return;
+        const p = state.profile || {};
+        const now = new Date();
+        const yesterday = new Date(now);
+        yesterday.setDate(now.getDate() - 1);
+        const yIso = dayISOOf(yesterday);
+        const before = new Date(now);
+        before.setDate(now.getDate() - 2);
+        const patch = {};
+        // 1) consumir congelador: ayer fallado, anteayer (o cadena) activo, y hay congeladores
+        const saved = p.streakSaved || [];
+        if (!wasActiveOn(state, yIso) && !saved.includes(yIso) && (p.streakFreezes || 0) > 0 && (wasActiveOn(state, dayISOOf(before)) || saved.includes(dayISOOf(before)))) {
+            patch.streakFreezes = (p.streakFreezes || 0) - 1;
+            patch.streakSaved = [...saved, yIso].slice(-30);
+        }
+        // 2) calcular racha con el posible perdón aplicado
+        const tmpState = patch.streakSaved ? { ...state, profile: { ...p, streakSaved: patch.streakSaved } } : state;
+        const st = hiveStreak(tmpState, now);
+        // 3) ganar 1 congelador cada 7 días de racha (máx. 2 guardados)
+        const milestone = Math.floor(st.count / 7);
+        if (milestone > (p.streakMilestone || 0) && (patch.streakFreezes != null ? patch.streakFreezes : (p.streakFreezes || 0)) < 2) {
+            patch.streakFreezes = Math.min(2, (patch.streakFreezes != null ? patch.streakFreezes : (p.streakFreezes || 0)) + 1);
+            patch.streakMilestone = milestone;
+        }
+        else if (milestone > (p.streakMilestone || 0)) {
+            patch.streakMilestone = milestone;
+        }
+        // 4) mejor marca
+        if (st.count > (p.streakBest || 0))
+            patch.streakBest = st.count;
+        if (Object.keys(patch).length)
+            dispatch({ type: "profile", payload: patch });
+    }, [state.ready, state.habits, state.events]);
+    /* número en el icono de la app: pendientes de hoy (eventos + hábitos) */
+    useEffect(() => {
+        if (!state.ready)
+            return;
+        try {
+            if (typeof navigator === "undefined" || typeof navigator.setAppBadge !== "function")
+                return;
+            const t = todayISO();
+            const evPend = (state.events || []).filter((e) => sameDay(e.date, t) && !e.done).length;
+            const hbPend = (state.habits || []).filter((h) => !(h.done || []).includes(t)).length;
+            const n = evPend + hbPend;
+            if (n > 0)
+                navigator.setAppBadge(n).catch(() => { });
+            else if (typeof navigator.clearAppBadge === "function")
+                navigator.clearAppBadge().catch(() => { });
+        }
+        catch (e) { }
+    }, [state.ready, state.events, state.habits]);
     const finishOnboarding = (profile, people) => {
         dispatch({ type: "profile", payload: profile });
         if (people && people.length)
