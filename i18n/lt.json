@@ -366,5 +366,18 @@
  "le paga a": "moka",
  "pagó": "sumokėjo",
  "¿Borrar el grupo": "Ištrinti grupę",
- "¿Qué fue? (cena, gasolina…)": "Kas tai buvo? (vakarienė, degalai…)"
+ "¿Qué fue? (cena, gasolina…)": "Kas tai buvo? (vakarienė, degalai…)",
+ "Cierre de mes": "Mėnesio apžvalga",
+ "NETO DEL MES": "MĖNESIO BALANSAS",
+ "GASTOS": "IŠLAIDOS",
+ "vs mes anterior": "palyginti su praėjusiu mėn.",
+ "Top categorías": "Pagrindinės kategorijos",
+ "Recurrentes detectados": "Aptiktos pasikartojančios",
+ "mes": "mėn.",
+ "Media diaria": "Dienos vidurkis",
+ "Día más caro": "Brangiausia diena",
+ "días activos": "aktyvios dienos",
+ "Sin movimientos ese mes.": "Tą mėnesį operacijų nėra.",
+ "Analizar mi mes con IA": "Analizuoti mano mėnesį su DI",
+ "Analizando…": "Analizuojama…"
 }

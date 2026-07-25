@@ -366,5 +366,18 @@
  "le paga a": "maksab",
  "pagó": "maksis",
  "¿Borrar el grupo": "Kas kustutada grupp",
- "¿Qué fue? (cena, gasolina…)": "Mis see oli? (õhtusöök, kütus…)"
+ "¿Qué fue? (cena, gasolina…)": "Mis see oli? (õhtusöök, kütus…)",
+ "Cierre de mes": "Kuu kokkuvõte",
+ "NETO DEL MES": "KUU BILANSS",
+ "GASTOS": "KULUD",
+ "vs mes anterior": "võrreldes eelmise kuuga",
+ "Top categorías": "Peamised kategooriad",
+ "Recurrentes detectados": "Tuvastatud korduvad",
+ "mes": "kuus",
+ "Media diaria": "Päevane keskmine",
+ "Día más caro": "Kalleim päev",
+ "días activos": "aktiivset päeva",
+ "Sin movimientos ese mes.": "Sel kuul tehinguid pole.",
+ "Analizar mi mes con IA": "Analüüsi mu kuud AI-ga",
+ "Analizando…": "Analüüsin…"
 }

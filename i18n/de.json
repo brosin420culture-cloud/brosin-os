@@ -366,5 +366,18 @@
  "le paga a": "zahlt an",
  "pagó": "bezahlt von",
  "¿Borrar el grupo": "Gruppe löschen",
- "¿Qué fue? (cena, gasolina…)": "Was war’s? (Abendessen, Benzin…)"
+ "¿Qué fue? (cena, gasolina…)": "Was war’s? (Abendessen, Benzin…)",
+ "Cierre de mes": "Monatsabschluss",
+ "NETO DEL MES": "MONATSSALDO",
+ "GASTOS": "AUSGABEN",
+ "vs mes anterior": "ggü. Vormonat",
+ "Top categorías": "Top-Kategorien",
+ "Recurrentes detectados": "Wiederkehrende Ausgaben",
+ "mes": "Monat",
+ "Media diaria": "Tagesdurchschnitt",
+ "Día más caro": "Teuerster Tag",
+ "días activos": "aktive Tage",
+ "Sin movimientos ese mes.": "Keine Buchungen in dem Monat.",
+ "Analizar mi mes con IA": "Meinen Monat mit KI analysieren",
+ "Analizando…": "Analysiere…"
 }

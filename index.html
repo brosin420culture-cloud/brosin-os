@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
 <title>Brosin OS</title>
 <meta name="description" content="Tu segundo cerebro. Bro, no te quedes sin." />
-<meta name="brosin-build" content="v28" />
+<meta name="brosin-build" content="v29" />
 <meta name="theme-color" content="#0a0a0a" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
@@ -59,7 +59,7 @@
 <div id="root">
   <div id="splash">
     <img class="bl" src="./brosin_eye.png" alt="Brosin" />
-    <div class="s">Despertando la colmena… · v28</div>
+    <div class="s">Despertando la colmena… · v29</div>
     <div class="l"></div>
   </div>
 </div>
@@ -78,7 +78,7 @@ import { Home, CalendarDays, Wallet, Package, Brain, Plus, Check, X, Target, Tre
    diccionario activo; si falta, devuelve el español (nunca se ve un hueco).
    Diccionarios: /i18n/{lang}.json — se descargan solo al elegir el idioma y
    quedan cacheados. El marco remonta con key={...lang} al cambiar. */
-const I18N_VER = "28"; // rompe la caché del SW al subir versión
+const I18N_VER = "29"; // rompe la caché del SW al subir versión
 const LANGS = [
     { k: "auto", label: "Automático" },
     { k: "es", label: "Español", flag: "🇪🇸", locale: "es-ES" },
@@ -2902,7 +2902,7 @@ function MonthView({ events, onPick, onAddDay }) {
 /* ============================================================
    DINERO
    ============================================================ */
-function MoneyScreen({ state, dispatch, tab, setTab, toast }) {
+function MoneyScreen({ state, dispatch, tab, setTab, toast, ai }) {
     const [sheet, setSheet] = useState(null); // 'tx' | 'debt' | 'inv'
     const [editInv, setEditInv] = useState(null);
     const [editDebt, setEditDebt] = useState(null);
@@ -2964,6 +2964,7 @@ function MoneyScreen({ state, dispatch, tab, setTab, toast }) {
         tab === "ahorro" && React.createElement(SavingsPanel, { state: state, dispatch: dispatch }),
         tab === "mercados" && React.createElement(MarketsPanel, { state: state, dispatch: dispatch, toast: toast }),
         tab === "graficas" && (state.tx.length === 0 ? (React.createElement(EmptyState, { face: "neutral", title: tr("Sin datos para graficar"), sub: tr("Apunta algunos movimientos y aquí verás tu dinero en gráficas."), cta: tr("Añadir movimiento"), onCta: () => setSheet("tx") })) : (React.createElement("div", { style: { display: "grid", gap: 12 } },
+            React.createElement(MonthCloseCard, { state: state, ai: ai }),
             React.createElement(ExpandableChart, { onExpand: () => setChartDetail("meses") },
                 React.createElement(MonthlyBars, { tx: state.tx })),
             state.tx.filter((x) => x.date).length >= 2 && (React.createElement(ExpandableChart, { onExpand: () => setChartDetail("balance") },
@@ -3327,6 +3328,48 @@ const SHARE_SIGN = { meter: 1, aporte: 1, ganancia: 1, sacar: -1, gasto: -1, per
 const shareSigned = (e) => { const s = SHARE_SIGN[e.kind]; return (s == null ? 1 : s) * Number(e.amount || 0); };
 // Live totals from the movement ledger — the bote (saldo) reflects every
 // meter/sacar/ganancia/etc. the instant it's dispatched.
+/* ---------- Cierre de mes (resumen financiero mensual) ---------- */
+const ymOf = (iso) => String(iso || "").slice(0, 7);
+const prevYm = (ym) => { const p = ym.split("-").map(Number); const d = new Date(p[0], p[1] - 2, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
+function monthStats(state, ym) {
+    const all = state.tx || [];
+    const tx = all.filter((x) => ymOf(x.date) === ym);
+    const prev = all.filter((x) => ymOf(x.date) === prevYm(ym));
+    const sum = (a, t) => a.filter((x) => x.type === t).reduce((s, x) => s + Number(x.amount || 0), 0);
+    const ing = sum(tx, "ingreso"), gas = sum(tx, "gasto");
+    const pIng = sum(prev, "ingreso"), pGas = sum(prev, "gasto");
+    const cats = {};
+    tx.filter((x) => x.type === "gasto").forEach((x) => { const k = x.category || "General"; cats[k] = (cats[k] || 0) + Number(x.amount || 0); });
+    const pCats = {};
+    prev.filter((x) => x.type === "gasto").forEach((x) => { const k = x.category || "General"; pCats[k] = (pCats[k] || 0) + Number(x.amount || 0); });
+    const topCats = Object.entries(cats).sort((a, b) => b[1] - a[1]).slice(0, 3).map((e) => ({ k: e[0], v: e[1], prev: pCats[e[0]] || 0 }));
+    // recurrentes: misma nota normalizada, o misma categoría con importe ~igual (±10%), presente también el mes anterior
+    const norm = (s) => String(s || "").toLowerCase().trim();
+    const rec = [];
+    tx.filter((x) => x.type === "gasto").forEach((x) => {
+        const hit = prev.find((p) => p.type === "gasto" && ((norm(x.note) && norm(p.note) === norm(x.note)) || (p.category === x.category && Math.abs(Number(p.amount) - Number(x.amount)) <= Math.max(0.5, Number(x.amount) * 0.1))));
+        if (hit && Number(x.amount) > 0 && !rec.some((r) => norm(r.note) === norm(x.note || x.category)))
+            rec.push({ note: x.note || x.category || "—", amount: Number(x.amount) });
+    });
+    rec.sort((a, b) => b.amount - a.amount);
+    const byDay = {};
+    tx.filter((x) => x.type === "gasto").forEach((x) => { const d = String(x.date).slice(0, 10); byDay[d] = (byDay[d] || 0) + Number(x.amount || 0); });
+    const worstArr = Object.entries(byDay).sort((a, b) => b[1] - a[1]);
+    const parts = ym.split("-").map(Number);
+    const daysInMonth = new Date(parts[0], parts[1], 0).getDate();
+    const savedM = (state.savings || []).reduce((s, h) => s + (h.log || []).filter((e) => ymOf(e.date) === ym).reduce((a, e) => a + Number(e.amount || 0), 0), 0);
+    let activeDays = 0;
+    for (let d = 1; d <= daysInMonth; d++) {
+        if (wasActiveOn(state, `${ym}-${String(d).padStart(2, "0")}`))
+            activeDays++;
+    }
+    return {
+        ym, ing, gas, net: ing - gas, pIng, pGas, pNet: pIng - pGas,
+        topCats, recurring: rec.slice(0, 5), recurringTotal: rec.reduce((s, r) => s + r.amount, 0),
+        worstDay: worstArr.length ? { date: worstArr[0][0], amount: worstArr[0][1] } : null,
+        dailyAvg: gas / daysInMonth, savedM, activeDays, daysInMonth, txCount: tx.length,
+    };
+}
 /* ---------- Grupos de gastos (repartir cuentas entre amigos) ----------
    Saldo por miembro = lo que pagó − su parte de cada gasto ± pagos hechos.
    simplifyDebts: transferencias mínimas (greedy mayor deudor → mayor acreedor). */
@@ -3593,6 +3636,141 @@ function SharedMoveForm({ partners, onSave, onCancel }) {
         React.createElement("div", { style: { display: "flex", gap: 8 } },
             React.createElement("button", { onClick: () => amount && onSave({ kind, amount: Math.abs(Number(amount)), who: needsWho ? who : "común", note }), style: miniBtn(C.purple, "#fff") }, "Guardar"),
             React.createElement("button", { onClick: onCancel, style: miniBtn(C.ink3, C.textLo) }, tr("Cancelar")))));
+}
+/* ---------- Cierre de mes: UI ---------- */
+function DeltaBadge({ now, prev, invert }) {
+    if (!prev)
+        return null;
+    const pct = ((now - prev) / prev) * 100;
+    if (!isFinite(pct) || Math.abs(pct) < 0.5)
+        return null;
+    const up = pct > 0;
+    const good = invert ? !up : up;
+    return React.createElement("span", { style: { fontSize: 10.5, fontWeight: 800, color: good ? C.good : C.bad } },
+        up ? "▲" : "▼",
+        " ",
+        Math.abs(pct).toFixed(0),
+        "%");
+}
+function MonthCloseCard({ state, ai }) {
+    const now = new Date();
+    const lastMonth = (() => { const d = new Date(now.getFullYear(), now.getMonth() - 1, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; })();
+    const curMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const [ym, setYm] = useState(lastMonth);
+    const [aiTxt, setAiTxt] = useState(null);
+    const [aiBusy, setAiBusy] = useState(false);
+    const s = monthStats(state, ym);
+    const label = (() => { try {
+        const p = ym.split("-").map(Number);
+        return new Date(p[0], p[1] - 1, 1).toLocaleDateString(LOCALE, { month: "long", year: "numeric" });
+    }
+    catch (e) {
+        return ym;
+    } })();
+    const nav = (dir) => { const p = ym.split("-").map(Number); const d = new Date(p[0], p[1] - 1 + dir, 1); const next = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; if (next <= curMonth) {
+        setYm(next);
+        setAiTxt(null);
+    } };
+    const analyze = async () => {
+        if (aiBusy)
+            return;
+        setAiBusy(true);
+        setAiTxt(null);
+        try {
+            const brief = `Mes ${label}: ingresos ${money(s.ing)}, gastos ${money(s.gas)}, neto ${money(s.net)} (mes anterior: neto ${money(s.pNet)}). Top categorías: ${s.topCats.map((c) => `${c.k} ${money(c.v)}${c.prev ? ` (antes ${money(c.prev)})` : ""}`).join(", ") || "—"}. Recurrentes detectados: ${s.recurring.map((r) => `${r.note} ${money(r.amount)}`).join(", ") || "ninguno"}. Metido en huchas: ${money(s.savedM)}. Gasto medio diario: ${money(s.dailyAvg)}. Días activos: ${s.activeDays}/${s.daysInMonth}.`;
+            const txt = await callClaude([{ role: "user", content: "Analiza mi cierre de mes." }], `Eres la mente financiera de Brosin. Con estos datos reales, escribe 3-4 frases claras: qué fue lo importante del mes, una alerta si la hay (gasto disparado, recurrentes que suman mucho) y DOS acciones concretas para el mes que viene. Sin markdown, sin listas, prosa directa y cercana.\n=== DATOS ===\n${brief}` + aiLangRule());
+            setAiTxt(String(txt).trim());
+        }
+        catch (e) {
+            setAiTxt(null);
+        }
+        finally {
+            setAiBusy(false);
+        }
+    };
+    return (React.createElement("div", { style: { ...card, padding: 16 } },
+        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 12 } },
+            React.createElement(Receipt, { size: 16, color: C.yellow }),
+            React.createElement("span", { style: { color: C.textHi, fontWeight: 800, fontSize: 14, flex: 1 } }, tr("Cierre de mes")),
+            React.createElement("button", { onClick: () => nav(-1), style: { ...iconBtn, width: 28, height: 28 } },
+                React.createElement(ChevronLeft, { size: 14 })),
+            React.createElement("span", { style: { color: C.textHi, fontWeight: 800, fontSize: 12.5, textTransform: "capitalize", minWidth: 108, textAlign: "center" } }, label),
+            React.createElement("button", { onClick: () => nav(1), style: { ...iconBtn, width: 28, height: 28, opacity: ym >= curMonth ? 0.35 : 1 } },
+                React.createElement(ChevronRight, { size: 14 }))),
+        s.txCount === 0 ? (React.createElement("div", { style: { color: C.textLo, fontSize: 13, textAlign: "center", padding: "14px 0" } }, tr("Sin movimientos ese mes."))) : (React.createElement(React.Fragment, null,
+            React.createElement("div", { style: { textAlign: "center", marginBottom: 12 } },
+                React.createElement("div", { style: { color: C.textLo, fontSize: 10.5, fontWeight: 800, letterSpacing: 1 } }, tr("NETO DEL MES")),
+                React.createElement("div", { style: { color: s.net >= 0 ? C.good : C.bad, fontWeight: 900, fontSize: 30, lineHeight: 1.1, fontVariantNumeric: "tabular-nums" } },
+                    s.net >= 0 ? "+" : "",
+                    money(s.net)),
+                s.pNet !== 0 && React.createElement("div", { style: { color: C.textLo, fontSize: 11.5, marginTop: 2 } },
+                    tr("vs mes anterior"),
+                    ": ",
+                    s.pNet >= 0 ? "+" : "",
+                    money(s.pNet))),
+            React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 } },
+                React.createElement("div", { style: { ...card, padding: "9px 10px", background: C.ink, textAlign: "center" } },
+                    React.createElement("div", { style: { color: C.textLo, fontSize: 10, fontWeight: 700 } },
+                        tr("INGRESOS"),
+                        " ",
+                        React.createElement(DeltaBadge, { now: s.ing, prev: s.pIng })),
+                    React.createElement("div", { style: { color: C.good, fontWeight: 900, fontSize: 16, fontVariantNumeric: "tabular-nums" } }, money(s.ing))),
+                React.createElement("div", { style: { ...card, padding: "9px 10px", background: C.ink, textAlign: "center" } },
+                    React.createElement("div", { style: { color: C.textLo, fontSize: 10, fontWeight: 700 } },
+                        tr("GASTOS"),
+                        " ",
+                        React.createElement(DeltaBadge, { now: s.gas, prev: s.pGas, invert: true })),
+                    React.createElement("div", { style: { color: C.bad, fontWeight: 900, fontSize: 16, fontVariantNumeric: "tabular-nums" } }, money(s.gas)))),
+            s.topCats.length > 0 && (React.createElement("div", { style: { marginBottom: 12 } },
+                React.createElement("div", { style: { color: C.textLo, fontSize: 11, fontWeight: 800, letterSpacing: 0.6, textTransform: "uppercase", marginBottom: 6 } }, tr("Top categorías")),
+                React.createElement("div", { style: { display: "grid", gap: 5 } }, s.topCats.map((c, i) => (React.createElement("div", { key: c.k, style: { display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 } },
+                    React.createElement("span", { style: { width: 8, height: 8, borderRadius: 3, background: SLICE[i % SLICE.length], flexShrink: 0 } }),
+                    React.createElement("span", { style: { color: C.textHi, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, c.k),
+                    React.createElement(DeltaBadge, { now: c.v, prev: c.prev, invert: true }),
+                    React.createElement("span", { style: { color: C.textHi, fontWeight: 800, fontVariantNumeric: "tabular-nums" } }, money(c.v)))))))),
+            s.recurring.length > 0 && (React.createElement("div", { style: { ...card, padding: 11, background: C.ink, marginBottom: 12 } },
+                React.createElement("div", { style: { color: C.yellow, fontSize: 11, fontWeight: 800, letterSpacing: 0.5, marginBottom: 6 } },
+                    "\uD83D\uDD01 ",
+                    tr("Recurrentes detectados"),
+                    " \u00B7 ",
+                    money(s.recurringTotal),
+                    "/",
+                    tr("mes")),
+                React.createElement("div", { style: { display: "grid", gap: 3 } }, s.recurring.map((r, i) => (React.createElement("div", { key: i, style: { display: "flex", justifyContent: "space-between", fontSize: 12, color: C.textLo } },
+                    React.createElement("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, r.note),
+                    React.createElement("span", { style: { color: C.textHi, fontWeight: 700, fontVariantNumeric: "tabular-nums" } }, money(r.amount)))))))),
+            React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12, fontSize: 11.5, color: C.textLo } },
+                React.createElement("span", { style: { ...card, padding: "5px 10px", background: C.ink } },
+                    tr("Media diaria"),
+                    ": ",
+                    React.createElement("b", { style: { color: C.textHi } }, money(s.dailyAvg))),
+                s.worstDay && React.createElement("span", { style: { ...card, padding: "5px 10px", background: C.ink } },
+                    tr("Día más caro"),
+                    ": ",
+                    React.createElement("b", { style: { color: C.textHi } },
+                        fmtDate(s.worstDay.date),
+                        " \u00B7 ",
+                        money(s.worstDay.amount))),
+                s.savedM > 0 && React.createElement("span", { style: { ...card, padding: "5px 10px", background: C.ink } },
+                    "\uD83D\uDC37 ",
+                    React.createElement("b", { style: { color: C.good } }, money(s.savedM))),
+                React.createElement("span", { style: { ...card, padding: "5px 10px", background: C.ink } },
+                    "\uD83D\uDC1D ",
+                    s.activeDays,
+                    "/",
+                    s.daysInMonth,
+                    " ",
+                    tr("días activos"))),
+            ai && (aiTxt ? (React.createElement("div", { style: { ...card, padding: "11px 13px", background: C.tintP || "rgba(144,19,254,.08)", border: "1px solid rgba(144,19,254,.45)", color: C.textHi, fontSize: 13, lineHeight: 1.55 } },
+                "\u2728 ",
+                aiTxt)) : (React.createElement("button", { onClick: analyze, style: { ...iconBtn, width: "100%", height: 42, gap: 8, fontWeight: 800, fontSize: 13, background: "rgba(144,19,254,.16)", borderColor: C.purple, color: C.textHi, opacity: aiBusy ? 0.6 : 1 } }, aiBusy ? React.createElement(React.Fragment, null,
+                React.createElement("span", { style: { display: "inline-flex", animation: "bspin 1s linear infinite" } },
+                    React.createElement(RefreshCcw, { size: 15 })),
+                " ",
+                tr("Analizando…")) : React.createElement(React.Fragment, null,
+                React.createElement(Sparkles, { size: 15, color: C.purple }),
+                " ",
+                tr("Analizar mi mes con IA")))))))));
 }
 /* ---------- Grupos de gastos: UI ---------- */
 function GroupsPanel({ state, dispatch, toast }) {
@@ -6429,7 +6607,7 @@ function BrosinOS() {
                     React.createElement(BeeMark, { size: 64, face: "happy" })))) : (React.createElement("div", { key: tab, style: { animation: "bpagein .3s cubic-bezier(.2,.9,.3,1)" } },
                 tab === "home" && React.createElement(HomeScreen, { state: state, dispatch: dispatch, go: setTab, ai: ai, toast: pushToast, openMarkets: () => { setMoneyTab("mercados"); setTab("dinero"); } }),
                 tab === "agenda" && React.createElement(AgendaScreen, { state: state, dispatch: dispatch }),
-                tab === "dinero" && React.createElement(MoneyScreen, { state: state, dispatch: dispatch, tab: moneyTab, setTab: setMoneyTab, toast: pushToast }),
+                tab === "dinero" && React.createElement(MoneyScreen, { state: state, dispatch: dispatch, tab: moneyTab, setTab: setMoneyTab, toast: pushToast, ai: ai }),
                 tab === "coleccion" && React.createElement(CollectionScreen, { state: state, dispatch: dispatch }),
                 tab === "cerebro" && React.createElement(BrainScreen, { state: state, dispatch: dispatch, ai: ai }),
                 tab === "camara" && React.createElement(CameraScreen, { state: state, dispatch: dispatch, back: () => setTab("home"), toast: pushToast }),

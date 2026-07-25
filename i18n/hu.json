@@ -366,5 +366,18 @@
  "le paga a": "fizet",
  "pagó": "fizette:",
  "¿Borrar el grupo": "Törlöd a csoportot",
- "¿Qué fue? (cena, gasolina…)": "Mi volt ez? (vacsora, benzin…)"
+ "¿Qué fue? (cena, gasolina…)": "Mi volt ez? (vacsora, benzin…)",
+ "Cierre de mes": "Havi zárás",
+ "NETO DEL MES": "HAVI EGYENLEG",
+ "GASTOS": "KIADÁSOK",
+ "vs mes anterior": "előző hónaphoz képest",
+ "Top categorías": "Fő kategóriák",
+ "Recurrentes detectados": "Ismétlődő tételek",
+ "mes": "hó",
+ "Media diaria": "Napi átlag",
+ "Día más caro": "Legdrágább nap",
+ "días activos": "aktív nap",
+ "Sin movimientos ese mes.": "Nincs tétel abban a hónapban.",
+ "Analizar mi mes con IA": "Hónapom elemzése MI-vel",
+ "Analizando…": "Elemzés…"
 }

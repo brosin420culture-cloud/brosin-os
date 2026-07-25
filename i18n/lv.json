@@ -366,5 +366,18 @@
  "le paga a": "maksā",
  "pagó": "samaksāja",
  "¿Borrar el grupo": "Vai dzēst grupu",
- "¿Qué fue? (cena, gasolina…)": "Kas tas bija? (vakariņas, degviela…)"
+ "¿Qué fue? (cena, gasolina…)": "Kas tas bija? (vakariņas, degviela…)",
+ "Cierre de mes": "Mēneša pārskats",
+ "NETO DEL MES": "MĒNEŠA BILANCE",
+ "GASTOS": "IZDEVUMI",
+ "vs mes anterior": "salīdzinot ar iepriekšējo mēnesi",
+ "Top categorías": "Galvenās kategorijas",
+ "Recurrentes detectados": "Atklāti regulārie",
+ "mes": "mēn.",
+ "Media diaria": "Dienas vidējais",
+ "Día más caro": "Dārgākā diena",
+ "días activos": "aktīvas dienas",
+ "Sin movimientos ese mes.": "Tajā mēnesī nav darījumu.",
+ "Analizar mi mes con IA": "Analizēt manu mēnesi ar MI",
+ "Analizando…": "Analizē…"
 }

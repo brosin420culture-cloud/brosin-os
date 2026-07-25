@@ -366,5 +366,18 @@
  "le paga a": "platí",
  "pagó": "zaplatil(a)",
  "¿Borrar el grupo": "Vymazať skupinu",
- "¿Qué fue? (cena, gasolina…)": "Čo to bolo? (večera, benzín…)"
+ "¿Qué fue? (cena, gasolina…)": "Čo to bolo? (večera, benzín…)",
+ "Cierre de mes": "Mesačný prehľad",
+ "NETO DEL MES": "MESAČNÁ BILANCIA",
+ "GASTOS": "VÝDAVKY",
+ "vs mes anterior": "vs. minulý mesiac",
+ "Top categorías": "Hlavné kategórie",
+ "Recurrentes detectados": "Opakované výdavky",
+ "mes": "mes.",
+ "Media diaria": "Denný priemer",
+ "Día más caro": "Najdrahší deň",
+ "días activos": "aktívnych dní",
+ "Sin movimientos ese mes.": "Žiadne pohyby v tom mesiaci.",
+ "Analizar mi mes con IA": "Analyzovať môj mesiac s AI",
+ "Analizando…": "Analyzujem…"
 }

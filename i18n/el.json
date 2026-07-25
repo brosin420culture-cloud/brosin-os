@@ -366,5 +366,18 @@
  "le paga a": "πληρώνει",
  "pagó": "πλήρωσε",
  "¿Borrar el grupo": "Διαγραφή της ομάδας",
- "¿Qué fue? (cena, gasolina…)": "Τι ήταν; (δείπνο, βενζίνη…)"
+ "¿Qué fue? (cena, gasolina…)": "Τι ήταν; (δείπνο, βενζίνη…)",
+ "Cierre de mes": "Μηνιαίος απολογισμός",
+ "NETO DEL MES": "ΚΑΘΑΡΟ ΜΗΝΟΣ",
+ "GASTOS": "ΕΞΟΔΑ",
+ "vs mes anterior": "έναντι προηγ. μήνα",
+ "Top categorías": "Κορυφαίες κατηγορίες",
+ "Recurrentes detectados": "Επαναλαμβανόμενα έξοδα",
+ "mes": "μήνα",
+ "Media diaria": "Ημερήσιος μέσος",
+ "Día más caro": "Πιο ακριβή μέρα",
+ "días activos": "ενεργές μέρες",
+ "Sin movimientos ese mes.": "Καμία κίνηση εκείνον τον μήνα.",
+ "Analizar mi mes con IA": "Ανάλυση του μήνα μου με ΤΝ",
+ "Analizando…": "Ανάλυση…"
 }

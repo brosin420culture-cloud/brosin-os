@@ -366,5 +366,18 @@
  "le paga a": "îi plătește lui",
  "pagó": "plătit de",
  "¿Borrar el grupo": "Ștergi grupul",
- "¿Qué fue? (cena, gasolina…)": "Ce a fost? (cină, benzină…)"
+ "¿Qué fue? (cena, gasolina…)": "Ce a fost? (cină, benzină…)",
+ "Cierre de mes": "Bilanțul lunii",
+ "NETO DEL MES": "BILANȚ LUNAR",
+ "GASTOS": "CHELTUIELI",
+ "vs mes anterior": "vs luna trecută",
+ "Top categorías": "Categorii principale",
+ "Recurrentes detectados": "Recurente detectate",
+ "mes": "lună",
+ "Media diaria": "Media zilnică",
+ "Día más caro": "Cea mai scumpă zi",
+ "días activos": "zile active",
+ "Sin movimientos ese mes.": "Fără tranzacții în acea lună.",
+ "Analizar mi mes con IA": "Analizează-mi luna cu AI",
+ "Analizando…": "Se analizează…"
 }

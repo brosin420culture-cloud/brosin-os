@@ -366,5 +366,18 @@
  "le paga a": "plaća",
  "pagó": "platio/la",
  "¿Borrar el grupo": "Izbrisati grupu",
- "¿Qué fue? (cena, gasolina…)": "Što je to bilo? (večera, gorivo…)"
+ "¿Qué fue? (cena, gasolina…)": "Što je to bilo? (večera, gorivo…)",
+ "Cierre de mes": "Mjesečni pregled",
+ "NETO DEL MES": "NETO MJESECA",
+ "GASTOS": "TROŠKOVI",
+ "vs mes anterior": "u odnosu na prošli mjesec",
+ "Top categorías": "Glavne kategorije",
+ "Recurrentes detectados": "Otkriveni ponavljajući",
+ "mes": "mj.",
+ "Media diaria": "Dnevni prosjek",
+ "Día más caro": "Najskuplji dan",
+ "días activos": "aktivnih dana",
+ "Sin movimientos ese mes.": "Nema transakcija taj mjesec.",
+ "Analizar mi mes con IA": "Analiziraj moj mjesec s AI",
+ "Analizando…": "Analiziram…"
 }

@@ -366,5 +366,18 @@
  "le paga a": "betaalt",
  "pagó": "betaald door",
  "¿Borrar el grupo": "Groep verwijderen",
- "¿Qué fue? (cena, gasolina…)": "Wat was het? (etentje, benzine…)"
+ "¿Qué fue? (cena, gasolina…)": "Wat was het? (etentje, benzine…)",
+ "Cierre de mes": "Maandoverzicht",
+ "NETO DEL MES": "MAANDSALDO",
+ "GASTOS": "UITGAVEN",
+ "vs mes anterior": "t.o.v. vorige maand",
+ "Top categorías": "Topcategorieën",
+ "Recurrentes detectados": "Vaste lasten gevonden",
+ "mes": "maand",
+ "Media diaria": "Daggemiddelde",
+ "Día más caro": "Duurste dag",
+ "días activos": "actieve dagen",
+ "Sin movimientos ese mes.": "Geen transacties die maand.",
+ "Analizar mi mes con IA": "Mijn maand analyseren met AI",
+ "Analizando…": "Analyseren…"
 }

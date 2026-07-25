@@ -366,5 +366,18 @@
  "le paga a": "pays",
  "pagó": "paid by",
  "¿Borrar el grupo": "Delete the group",
- "¿Qué fue? (cena, gasolina…)": "What was it? (dinner, fuel…)"
+ "¿Qué fue? (cena, gasolina…)": "What was it? (dinner, fuel…)",
+ "Cierre de mes": "Month in review",
+ "NETO DEL MES": "MONTHLY NET",
+ "GASTOS": "SPENDING",
+ "vs mes anterior": "vs last month",
+ "Top categorías": "Top categories",
+ "Recurrentes detectados": "Recurring detected",
+ "mes": "month",
+ "Media diaria": "Daily average",
+ "Día más caro": "Priciest day",
+ "días activos": "active days",
+ "Sin movimientos ese mes.": "No transactions that month.",
+ "Analizar mi mes con IA": "Analyze my month with AI",
+ "Analizando…": "Analyzing…"
 }

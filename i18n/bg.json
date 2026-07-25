@@ -366,5 +366,18 @@
  "le paga a": "плаща на",
  "pagó": "платено от",
  "¿Borrar el grupo": "Да изтрия ли групата",
- "¿Qué fue? (cena, gasolina…)": "Какво беше? (вечеря, гориво…)"
+ "¿Qué fue? (cena, gasolina…)": "Какво беше? (вечеря, гориво…)",
+ "Cierre de mes": "Месечен преглед",
+ "NETO DEL MES": "НЕТНО ЗА МЕСЕЦА",
+ "GASTOS": "РАЗХОДИ",
+ "vs mes anterior": "спрямо предходния месец",
+ "Top categorías": "Топ категории",
+ "Recurrentes detectados": "Открити повтарящи се",
+ "mes": "месец",
+ "Media diaria": "Дневна средна",
+ "Día más caro": "Най-скъп ден",
+ "días activos": "активни дни",
+ "Sin movimientos ese mes.": "Няма движения през този месец.",
+ "Analizar mi mes con IA": "Анализирай месеца ми с ИИ",
+ "Analizando…": "Анализиране…"
 }

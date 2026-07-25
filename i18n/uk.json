@@ -366,5 +366,18 @@
  "le paga a": "платить",
  "pagó": "заплатив/ла",
  "¿Borrar el grupo": "Видалити групу",
- "¿Qué fue? (cena, gasolina…)": "Що це було? (вечеря, пальне…)"
+ "¿Qué fue? (cena, gasolina…)": "Що це було? (вечеря, пальне…)",
+ "Cierre de mes": "Підсумок місяця",
+ "NETO DEL MES": "БАЛАНС МІСЯЦЯ",
+ "GASTOS": "ВИТРАТИ",
+ "vs mes anterior": "порівняно з минулим місяцем",
+ "Top categorías": "Топ категорії",
+ "Recurrentes detectados": "Виявлені регулярні",
+ "mes": "міс.",
+ "Media diaria": "Середнє за день",
+ "Día más caro": "Найдорожчий день",
+ "días activos": "активних днів",
+ "Sin movimientos ese mes.": "Немає операцій за той місяць.",
+ "Analizar mi mes con IA": "Проаналізувати мій місяць з ШІ",
+ "Analizando…": "Аналізую…"
 }

@@ -366,5 +366,18 @@
  "le paga a": "betalar",
  "pagó": "betalt av",
  "¿Borrar el grupo": "Vill du radera gruppen",
- "¿Qué fue? (cena, gasolina…)": "Vad var det? (middag, bensin…)"
+ "¿Qué fue? (cena, gasolina…)": "Vad var det? (middag, bensin…)",
+ "Cierre de mes": "Månadsbokslut",
+ "NETO DEL MES": "MÅNADSNETTO",
+ "GASTOS": "UTGIFTER",
+ "vs mes anterior": "jfr förra månaden",
+ "Top categorías": "Toppkategorier",
+ "Recurrentes detectados": "Återkommande utgifter",
+ "mes": "mån",
+ "Media diaria": "Dagligt snitt",
+ "Día más caro": "Dyraste dagen",
+ "días activos": "aktiva dagar",
+ "Sin movimientos ese mes.": "Inga transaktioner den månaden.",
+ "Analizar mi mes con IA": "Analysera min månad med AI",
+ "Analizando…": "Analyserar…"
 }

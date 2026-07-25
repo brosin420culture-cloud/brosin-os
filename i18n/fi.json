@@ -366,5 +366,18 @@
  "le paga a": "maksaa",
  "pagó": "maksoi",
  "¿Borrar el grupo": "Poistetaanko ryhmä",
- "¿Qué fue? (cena, gasolina…)": "Mikä se oli? (illallinen, bensa…)"
+ "¿Qué fue? (cena, gasolina…)": "Mikä se oli? (illallinen, bensa…)",
+ "Cierre de mes": "Kuukausikatsaus",
+ "NETO DEL MES": "KUUKAUDEN NETTO",
+ "GASTOS": "MENOT",
+ "vs mes anterior": "vs. edellinen kuukausi",
+ "Top categorías": "Suurimmat kategoriat",
+ "Recurrentes detectados": "Toistuvat menot",
+ "mes": "kk",
+ "Media diaria": "Päiväkeskiarvo",
+ "Día más caro": "Kallein päivä",
+ "días activos": "aktiivista päivää",
+ "Sin movimientos ese mes.": "Ei tapahtumia sinä kuukautena.",
+ "Analizar mi mes con IA": "Analysoi kuukauteni tekoälyllä",
+ "Analizando…": "Analysoidaan…"
 }
