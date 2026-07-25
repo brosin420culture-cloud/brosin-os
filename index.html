@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
 <title>Brosin OS</title>
 <meta name="description" content="Tu segundo cerebro. Bro, no te quedes sin." />
-<meta name="brosin-build" content="v26" />
+<meta name="brosin-build" content="v27" />
 <meta name="theme-color" content="#0a0a0a" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
@@ -59,7 +59,7 @@
 <div id="root">
   <div id="splash">
     <img class="bl" src="./brosin_eye.png" alt="Brosin" />
-    <div class="s">Despertando la colmena… · v26</div>
+    <div class="s">Despertando la colmena… · v27</div>
     <div class="l"></div>
   </div>
 </div>
@@ -78,7 +78,7 @@ import { Home, CalendarDays, Wallet, Package, Brain, Plus, Check, X, Target, Tre
    diccionario activo; si falta, devuelve el español (nunca se ve un hueco).
    Diccionarios: /i18n/{lang}.json — se descargan solo al elegir el idioma y
    quedan cacheados. El marco remonta con key={...lang} al cambiar. */
-const I18N_VER = "26"; // rompe la caché del SW al subir versión
+const I18N_VER = "27"; // rompe la caché del SW al subir versión
 const LANGS = [
     { k: "auto", label: "Automático" },
     { k: "es", label: "Español", flag: "🇪🇸", locale: "es-ES" },
@@ -161,6 +161,16 @@ async function loadLang(lang) {
     catch (e) { }
     return !!dict;
 }
+/* nombre del idioma para las instrucciones de la IA */
+const LANG_NAMES = { es: "español de España", en: "English", fr: "français", de: "Deutsch", it: "italiano", pt: "português", nl: "Nederlands", pl: "polski", sv: "svenska", da: "dansk", no: "norsk (bokmål)", fi: "suomi", cs: "čeština", sk: "slovenčina", hu: "magyar", ro: "română", el: "ελληνικά (griego)", bg: "български (búlgaro)", hr: "hrvatski", sl: "slovenščina", lt: "lietuvių", lv: "latviešu", et: "eesti", ga: "Gaeilge (irlandés)", mt: "Malti (maltés)", uk: "українська (ucraniano)" };
+const aiLangRule = (mode) => {
+    if (CUR_LANG === "es")
+        return "";
+    const n = LANG_NAMES[CUR_LANG] || "English";
+    return mode === "json"
+        ? `\nIDIOMA: el usuario usa la app en ${n}. El campo "reply" va SIEMPRE en ${n}; las claves del JSON y los valores fijos (tipos, categorías, kinds) se quedan tal cual en el formato indicado.`
+        : `\nIDIOMA: responde SIEMPRE en ${n} (el usuario usa la app en ese idioma).`;
+};
 /* ---------- Brand tokens (tema noche / claro) ----------
    C es mutable: applyTheme() vuelca la paleta activa sobre él (y sobre los
    átomos de estilo capturados a nivel de módulo) en cada render del root.
@@ -682,7 +692,7 @@ function computeReminders(state) {
             return;
         const start = dt.getTime();
         const leads = (e.lead != null) ? (e.lead === 0 ? [0] : [e.lead, 0]) : [1440, 60, 0];
-        leads.forEach((lead) => push(`ev:${e.id}:${lead}`, new Date(start - lead * 60000), lead === 0 ? `Ahora: ${e.title}` : `Pronto: ${e.title}`, `${fmtDate(e.date)}${e.time ? ` · ${e.time}` : ""}`));
+        leads.forEach((lead) => push(`ev:${e.id}:${lead}`, new Date(start - lead * 60000), lead === 0 ? `${tr("Ahora")}: ${e.title}` : `${tr("Pronto")}: ${e.title}`, `${fmtDate(e.date)}${e.time ? ` · ${e.time}` : ""}`));
     });
     (state.people || []).forEach((p) => {
         if (p.remind === false || !p.birthday)
@@ -690,7 +700,7 @@ function computeReminders(state) {
         const nb = nextBirthdayDate(p.birthday);
         if (!nb)
             return;
-        [7, 1, 0].forEach((d) => { const fire = new Date(nb.getTime() - d * 24 * 3600 * 1000); fire.setHours(9, 0, 0, 0); push(`bd:${p.id}:${d}`, fire, d === 0 ? `🎂 Hoy cumple ${p.name}` : d === 1 ? `🎂 Mañana cumple ${p.name}` : `🎂 ${p.name} cumple en ${d} días`, (p.giftIdeas || []).some((g) => !g.done) ? "Tienes ideas de regalo apuntadas" : "Prepárale un detalle"); });
+        [7, 1, 0].forEach((d) => { const fire = new Date(nb.getTime() - d * 24 * 3600 * 1000); fire.setHours(9, 0, 0, 0); push(`bd:${p.id}:${d}`, fire, d === 0 ? `🎂 ${tr("Hoy cumple")} ${p.name}` : d === 1 ? `🎂 ${tr("Mañana cumple")} ${p.name}` : `🎂 ${p.name} ${tr("cumple en")} ${d} ${tr("días")}`, (p.giftIdeas || []).some((g) => !g.done) ? tr("Tienes ideas de regalo apuntadas") : tr("Prepárale un detalle")); });
     });
     (state.goals || []).forEach((g) => {
         if (!g.deadline || g.notif === false)
@@ -698,7 +708,7 @@ function computeReminders(state) {
         if (g.steps && g.steps.length && g.steps.every((s) => s.done))
             return;
         [3, 1, 0].forEach((d) => { const gd = new Date(g.deadline + "T09:00:00"); if (isNaN(gd.getTime()))
-            return; push(`gl:${g.id}:${d}`, new Date(gd.getTime() - d * 24 * 3600 * 1000), d === 0 ? `Hoy es la meta: ${g.title}` : `Se acerca: ${g.title}`, g.why ? "Recuerda: " + g.why : "A por ello."); });
+            return; push(`gl:${g.id}:${d}`, new Date(gd.getTime() - d * 24 * 3600 * 1000), d === 0 ? `${tr("Hoy es la meta")}: ${g.title}` : `${tr("Se acerca")}: ${g.title}`, g.why ? tr("Recuerda") + ": " + g.why : tr("A por ello.")); });
     });
     // "Tu día en 30 segundos": aviso matinal diario a la hora elegida (próximos 7 días)
     const prof = state.profile || {};
@@ -716,11 +726,11 @@ function computeReminders(state) {
             const hb = (state.habits || []).length;
             const bits = [];
             if (evs.length)
-                bits.push(`${evs.length} evento${evs.length === 1 ? "" : "s"}`);
+                bits.push(`${evs.length} ${evs.length === 1 ? tr("evento") : tr("eventos")}`);
             if (hb)
-                bits.push(`${hb} hábito${hb === 1 ? "" : "s"}`);
+                bits.push(`${hb} ${hb === 1 ? tr("hábito") : tr("hábitos")}`);
             bds.forEach((p) => bits.push(`🎂 ${p.name}`));
-            push(`brief:${iso}`, day, "🐝 Tu día en 30 segundos", bits.length ? bits.join(" · ") : "Día despejado — elige tu jugada.");
+            push(`brief:${iso}`, day, "🐝 " + tr("Tu día en 30 segundos"), bits.length ? bits.join(" · ") : tr("Día despejado — elige tu jugada."));
         }
     }
     return out;
@@ -1989,7 +1999,7 @@ function DailyBrief({ state, dispatch, streak, ai, go, onClose }) {
         if (!ai)
             return;
         let alive = true;
-        callClaude([{ role: "user", content: "Dame UNA sola frase (máximo 22 palabras) de enfoque para mi día de hoy, concreta a mis datos, en español, sin comillas ni markdown." }], `Eres la mente de Brosin. Hoy es ${fmtLong()}. Sé concreto y útil, tono sereno.\n=== DATOS ===\n${buildMemory(state)}`)
+        callClaude([{ role: "user", content: "Dame UNA sola frase (máximo 22 palabras) de enfoque para mi día de hoy, concreta a mis datos, sin comillas ni markdown." }], `Eres la mente de Brosin. Hoy es ${fmtLong()}. Sé concreto y útil, tono sereno.\n=== DATOS ===\n${buildMemory(state)}` + aiLangRule())
             .then((txt) => { if (alive && txt)
             setAiLine(String(txt).trim().slice(0, 220)); })
             .catch(() => { });
@@ -2060,6 +2070,46 @@ function DailyBrief({ state, dispatch, streak, ai, go, onClose }) {
             React.createElement("button", { onClick: () => { onClose && onClose(); go && go("agenda"); }, style: miniBtn(C.ink3, C.textHi) }, tr("Ver agenda")),
             React.createElement("button", { onClick: onClose, style: miniBtn(C.yellow, C.ink) }, tr("¡A por el día! 🐝")))));
 }
+/* Mapa de calor de constancia (estilo GitHub/TickTick): 18 semanas de actividad */
+function ActivityHeatmap({ state }) {
+    const counts = {};
+    (state.habits || []).forEach((h) => (h.done || []).forEach((d) => { counts[d] = (counts[d] || 0) + 1; }));
+    (state.events || []).forEach((e) => { if (e.done && e.date) {
+        const k = String(e.date).slice(0, 10);
+        counts[k] = (counts[k] || 0) + 1;
+    } });
+    const today = new Date();
+    const WEEKS = 18;
+    const dow = (today.getDay() + 6) % 7; // 0 = lunes
+    const start = new Date(today);
+    start.setDate(today.getDate() - dow - (WEEKS - 1) * 7);
+    const cols = [];
+    for (let w = 0; w < WEEKS; w++) {
+        const col = [];
+        for (let d = 0; d < 7; d++) {
+            const dt = new Date(start);
+            dt.setDate(start.getDate() + w * 7 + d);
+            if (dt > today) {
+                col.push(null);
+                continue;
+            }
+            const iso = dayISOOf(dt);
+            col.push({ iso, n: counts[iso] || 0, today: iso === dayISOOf(today) });
+        }
+        cols.push(col);
+    }
+    const colOf = (n) => (n === 0 ? C.ink3 : n === 1 ? "rgba(255,212,0,.35)" : n === 2 ? "rgba(255,212,0,.65)" : C.yellow);
+    return (React.createElement("div", { style: { ...card, padding: 14, marginBottom: 14, background: C.ink } },
+        React.createElement("div", { style: { color: C.textHi, fontWeight: 800, fontSize: 13 } },
+            tr("Tu constancia"),
+            " \u00B7 18 ",
+            tr("semanas")),
+        React.createElement("div", { style: { display: "flex", gap: 3, justifyContent: "center", marginTop: 10 } }, cols.map((col, i) => (React.createElement("div", { key: i, style: { display: "grid", gap: 3 } }, col.map((c, j) => (React.createElement("div", { key: j, style: { width: 11, height: 11, borderRadius: 3, background: c ? colOf(c.n) : "transparent", outline: c && c.today ? `1.5px solid ${C.textHi}` : "none", outlineOffset: -1 } }))))))),
+        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 5, justifyContent: "flex-end", marginTop: 10 } },
+            React.createElement("span", { style: { color: C.textLo, fontSize: 10.5 } }, tr("Menos")),
+            [0, 1, 2, 3].map((n) => React.createElement("span", { key: n, style: { width: 10, height: 10, borderRadius: 3, background: colOf(n), display: "inline-block" } })),
+            React.createElement("span", { style: { color: C.textLo, fontSize: 10.5 } }, tr("Más")))));
+}
 function StreakPanel({ state, streak }) {
     const p = state.profile || {};
     const best = Math.max(p.streakBest || 0, streak.count, hiveBestStreak(state));
@@ -2076,6 +2126,7 @@ function StreakPanel({ state, streak }) {
             React.createElement(MiniStat, { label: tr("MEJOR RACHA"), val: String(best), col: C.yellow }),
             React.createElement(MiniStat, { label: tr("CONGELADORES"), val: `${freezes}/2`, col: C.textHi }),
             React.createElement(MiniStat, { label: tr("DÍAS SALVADOS"), val: String(savedCount), col: C.purple })),
+        React.createElement(ActivityHeatmap, { state: state }),
         React.createElement("div", { style: { ...card, padding: 14, background: C.ink, fontSize: 12.5, color: C.textLo, lineHeight: 1.6 } },
             React.createElement("b", { style: { color: C.textHi } }, "C\u00F3mo funciona:"),
             " cada d\u00EDa que completas al menos ",
@@ -2274,7 +2325,7 @@ function PersonCard({ p, dispatch, onEdit }) {
     const genMsg = async () => {
         setMsgBusy(true);
         setMsg(null);
-        const sys = `Escribe una felicitación de cumpleaños breve, cálida y natural en español de España para ${p.name}${p.relation ? ` (${p.relation})` : ""}.${p.notes ? ` Datos que la hacen personal: ${p.notes}.` : ""} Tono cercano y sincero, sin cursiladas ni frases hechas, 2-3 frases, lista para enviar por WhatsApp. Devuelve solo el mensaje, sin comillas.`;
+        const sys = `Escribe una felicitación de cumpleaños breve, cálida y natural en ${LANG_NAMES[CUR_LANG] || "español de España"} para ${p.name}${p.relation ? ` (${p.relation})` : ""}.${p.notes ? ` Datos que la hacen personal: ${p.notes}.` : ""} Tono cercano y sincero, sin cursiladas ni frases hechas, 2-3 frases, lista para enviar por WhatsApp. Devuelve solo el mensaje, sin comillas.`;
         try {
             const txt = await callClaude([{ role: "user", content: "Escríbeme la felicitación." }], sys);
             setMsg(txt.trim());
@@ -2402,7 +2453,7 @@ Cada acción es UNO de estos objetos:
 - {"type":"habit","name":"..."}  (marcar un hábito como hecho HOY)
 Reglas: interpreta fechas relativas ("mañana","el día 20","el viernes que viene") a fecha real a partir de hoy. No inventes importes, fechas ni horas que el usuario no haya dicho (si falta la hora, usa null). DESCOMPÓN frases con varias cosas en VARIAS acciones: "pagué 40 de la cena con Marcos y me debe la mitad" => tx(gasto 40) + debt(meDeben, Marcos, 20). Para saving/habit usa el nombre tal cual lo diga (se buscará el más parecido). Si no hay ninguna acción clara, devuelve "actions":[] y una "reply" pidiendo el detalle que falte. Sé conciso.
 === CONTEXTO ACTUAL ===
-${buildMemory(state)}`;
+${buildMemory(state)}` + aiLangRule("json");
         try {
             const txt = await callClaude([{ role: "user", content: q }], sys);
             const j = parseClaudeJson(txt);
@@ -2620,7 +2671,7 @@ function AiBrief({ ai, state }) {
     const run = useCallback(async () => {
         setLoading(true);
         setErr(null);
-        const sys = `Eres la mente de Brosin, la conciencia inteligente de ${state.profile.name || "tu usuario"}: articulada, serena y con criterio. Tuteas, sin jerga ni muletillas; nada de "bro" ni vacile. Conoces todo lo que tiene registrado (memoria abajo). Redacta un parte del día BREVE (máx 3 frases), con elegancia y enfoque: destaca lo relevante de hoy (agenda, dinero, objetivos o algo que sobresalga de su memoria) y deja una idea o empujón que merezca leerse. Prosa limpia, sin markdown, sin firmas.\n\n=== MEMORIA ===\n${buildMemory(state)}`;
+        const sys = `Eres la mente de Brosin, la conciencia inteligente de ${state.profile.name || "tu usuario"}: articulada, serena y con criterio. Tuteas, sin jerga ni muletillas; nada de "bro" ni vacile. Conoces todo lo que tiene registrado (memoria abajo). Redacta un parte del día BREVE (máx 3 frases), con elegancia y enfoque: destaca lo relevante de hoy (agenda, dinero, objetivos o algo que sobresalga de su memoria) y deja una idea o empujón que merezca leerse. Prosa limpia, sin markdown, sin firmas.\n\n=== MEMORIA ===\n${buildMemory(state)}` + aiLangRule();
         try {
             const txt = await callClaude([{ role: "user", content: "Dame el parte de hoy." }], sys);
             setOut(txt.trim());
@@ -4382,7 +4433,7 @@ function ChatSheet({ onClose, state, dispatch }) {
             setInput("");
         }
         setLoading(true);
-        const sys = `Eres la mente de Brosin: la conciencia inteligente de ${state.profile.name || "tu usuario"}. Hablas con criterio, cultura y precisión — articulado, sereno y perspicaz, como un buen consejero que además es cercano. Tuteas, pero no caes en jerga vacía, muletillas ni el cliché del "colega fumado"; nada de "bro", "tío" o vacile gratuito. Aportas claridad, contexto y una idea útil en cada respuesta; cuando conviene, una observación que invite a pensar. Eres su segundo cerebro y su memoria: YA CONOCES todo lo que tiene registrado (abajo). No le pidas que repita datos que ya tienes — si perdió 50€ el lunes, lo sabes porque está en sus movimientos. Sé conciso pero con sustancia; prosa limpia, sin markdown ni listas largas salvo que lo pida.\n\n=== MEMORIA DE LA APP (todo lo que sé de ${state.profile.name || "ti"}) ===\n${buildMemory(state)}`;
+        const sys = `Eres la mente de Brosin: la conciencia inteligente de ${state.profile.name || "tu usuario"}. Hablas con criterio, cultura y precisión — articulado, sereno y perspicaz, como un buen consejero que además es cercano. Tuteas, pero no caes en jerga vacía, muletillas ni el cliché del "colega fumado"; nada de "bro", "tío" o vacile gratuito. Aportas claridad, contexto y una idea útil en cada respuesta; cuando conviene, una observación que invite a pensar. Eres su segundo cerebro y su memoria: YA CONOCES todo lo que tiene registrado (abajo). No le pidas que repita datos que ya tienes — si perdió 50€ el lunes, lo sabes porque está en sus movimientos. Sé conciso pero con sustancia; prosa limpia, sin markdown ni listas largas salvo que lo pida.\n\n=== MEMORIA DE LA APP (todo lo que sé de ${state.profile.name || "ti"}) ===\n${buildMemory(state)}` + aiLangRule();
         try {
             const apiMsgs = history.filter((m) => m.role === "user" || m.role === "assistant").slice(-10).map((m) => ({ role: m.role, content: m.content }));
             const txt = await callClaude(apiMsgs, sys);
