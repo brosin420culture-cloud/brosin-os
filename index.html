@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
 <title>Brosin OS</title>
 <meta name="description" content="Tu segundo cerebro. Bro, no te quedes sin." />
-<meta name="brosin-build" content="v27" />
+<meta name="brosin-build" content="v28" />
 <meta name="theme-color" content="#0a0a0a" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
@@ -59,7 +59,7 @@
 <div id="root">
   <div id="splash">
     <img class="bl" src="./brosin_eye.png" alt="Brosin" />
-    <div class="s">Despertando la colmena… · v27</div>
+    <div class="s">Despertando la colmena… · v28</div>
     <div class="l"></div>
   </div>
 </div>
@@ -78,7 +78,7 @@ import { Home, CalendarDays, Wallet, Package, Brain, Plus, Check, X, Target, Tre
    diccionario activo; si falta, devuelve el español (nunca se ve un hueco).
    Diccionarios: /i18n/{lang}.json — se descargan solo al elegir el idioma y
    quedan cacheados. El marco remonta con key={...lang} al cambiar. */
-const I18N_VER = "27"; // rompe la caché del SW al subir versión
+const I18N_VER = "28"; // rompe la caché del SW al subir versión
 const LANGS = [
     { k: "auto", label: "Automático" },
     { k: "es", label: "Español", flag: "🇪🇸", locale: "es-ES" },
@@ -1115,6 +1115,7 @@ const EMPTY = {
     investments: [],
     collections: [],
     orgs: [],
+    groups: [],
     fiados: [],
     goals: [],
     notes: [],
@@ -2956,8 +2957,10 @@ function MoneyScreen({ state, dispatch, tab, setTab, toast }) {
             React.createElement(Chip, { active: tab === "deudas", onClick: () => setTab("deudas") }, tr("Deudas")),
             React.createElement(Chip, { active: tab === "inversiones", onClick: () => setTab("inversiones") }, tr("Inversiones")),
             React.createElement(Chip, { active: tab === "compartida", onClick: () => setTab("compartida") }, tr("Compartida")),
+            React.createElement(Chip, { active: tab === "grupos", onClick: () => setTab("grupos") }, tr("Grupos")),
             React.createElement(Chip, { active: tab === "ahorro", onClick: () => setTab("ahorro") }, tr("Ahorro"))),
         tab === "compartida" && React.createElement(SharedInvPanel, { state: state, dispatch: dispatch }),
+        tab === "grupos" && React.createElement(GroupsPanel, { state: state, dispatch: dispatch, toast: toast }),
         tab === "ahorro" && React.createElement(SavingsPanel, { state: state, dispatch: dispatch }),
         tab === "mercados" && React.createElement(MarketsPanel, { state: state, dispatch: dispatch, toast: toast }),
         tab === "graficas" && (state.tx.length === 0 ? (React.createElement(EmptyState, { face: "neutral", title: tr("Sin datos para graficar"), sub: tr("Apunta algunos movimientos y aquí verás tu dinero en gráficas."), cta: tr("Añadir movimiento"), onCta: () => setSheet("tx") })) : (React.createElement("div", { style: { display: "grid", gap: 12 } },
@@ -3324,6 +3327,50 @@ const SHARE_SIGN = { meter: 1, aporte: 1, ganancia: 1, sacar: -1, gasto: -1, per
 const shareSigned = (e) => { const s = SHARE_SIGN[e.kind]; return (s == null ? 1 : s) * Number(e.amount || 0); };
 // Live totals from the movement ledger — the bote (saldo) reflects every
 // meter/sacar/ganancia/etc. the instant it's dispatched.
+/* ---------- Grupos de gastos (repartir cuentas entre amigos) ----------
+   Saldo por miembro = lo que pagó − su parte de cada gasto ± pagos hechos.
+   simplifyDebts: transferencias mínimas (greedy mayor deudor → mayor acreedor). */
+const groupBalances = (g) => {
+    const bal = {};
+    (g.members || []).forEach((m) => { bal[m.id] = 0; });
+    (g.expenses || []).forEach((e) => {
+        const ids = (e.split && e.split.length ? e.split : (g.members || []).map((m) => m.id)).filter((id) => bal[id] != null);
+        if (!ids.length)
+            return;
+        const amt = Number(e.amount || 0);
+        const share = amt / ids.length;
+        if (bal[e.paidBy] != null)
+            bal[e.paidBy] += amt;
+        ids.forEach((id) => { bal[id] -= share; });
+    });
+    (g.settled || []).forEach((s) => {
+        const a = Number(s.amount || 0);
+        if (bal[s.from] != null)
+            bal[s.from] += a;
+        if (bal[s.to] != null)
+            bal[s.to] -= a;
+    });
+    return bal;
+};
+const simplifyDebts = (bal) => {
+    const EPS = 0.005;
+    const debt = Object.entries(bal).filter(([, v]) => v < -EPS).map(([id, v]) => ({ id, v: -v })).sort((a, b) => b.v - a.v);
+    const cred = Object.entries(bal).filter(([, v]) => v > EPS).map(([id, v]) => ({ id, v })).sort((a, b) => b.v - a.v);
+    const out = [];
+    let i = 0, j = 0;
+    while (i < debt.length && j < cred.length) {
+        const x = Math.min(debt[i].v, cred[j].v);
+        out.push({ from: debt[i].id, to: cred[j].id, amount: Math.round(x * 100) / 100 });
+        debt[i].v -= x;
+        cred[j].v -= x;
+        if (debt[i].v <= EPS)
+            i++;
+        if (cred[j].v <= EPS)
+            j++;
+    }
+    return out.filter((t) => t.amount >= 0.01);
+};
+const groupTotal = (g) => (g.expenses || []).reduce((s, e) => s + Number(e.amount || 0), 0);
 const shareTotals = (log) => {
     let aportado = 0, retirado = 0, ganancia = 0, perdida = 0, saldo = 0;
     (log || []).forEach((e) => {
@@ -3545,6 +3592,176 @@ function SharedMoveForm({ partners, onSave, onCancel }) {
         React.createElement("input", { style: { ...inputStyle, marginBottom: 8 }, value: note, onChange: (e) => setNote(e.target.value), placeholder: tr("Nota: en qué se reinvirtió / gastó…") }),
         React.createElement("div", { style: { display: "flex", gap: 8 } },
             React.createElement("button", { onClick: () => amount && onSave({ kind, amount: Math.abs(Number(amount)), who: needsWho ? who : "común", note }), style: miniBtn(C.purple, "#fff") }, "Guardar"),
+            React.createElement("button", { onClick: onCancel, style: miniBtn(C.ink3, C.textLo) }, tr("Cancelar")))));
+}
+/* ---------- Grupos de gastos: UI ---------- */
+function GroupsPanel({ state, dispatch, toast }) {
+    const [sheet, setSheet] = useState(null); // 'new' | 'import'
+    const list = state.groups || [];
+    const addNew = (d) => { dispatch({ type: "add", col: "groups", item: { id: uid(), name: d.name, members: d.members, expenses: [], settled: [] } }); setSheet(null); };
+    const doImport = (code) => {
+        const obj = decodeShare(code);
+        if (!obj || obj.kind !== "brosin-group" || !obj.group) {
+            toast && toast("✗", tr("No reconozco ese código de grupo"));
+            return;
+        }
+        const g = obj.group;
+        dispatch({ type: "add", col: "groups", item: { id: uid(), name: g.name || "Grupo", members: (g.members || []).map((m) => ({ id: m.id || uid(), name: String(m.name || "?") })), expenses: (g.expenses || []).map((e) => ({ ...e, id: e.id || uid() })), settled: (g.settled || []).map((s) => ({ ...s, id: s.id || uid() })) } });
+        setSheet(null);
+        toast && toast("✓", tr("Grupo importado"));
+    };
+    return (React.createElement("div", null,
+        list.length === 0 ? (React.createElement(EmptyState, { face: "happy", title: tr("Cuentas entre amigos"), sub: tr("Reparte los gastos de cenas, viajes o el piso: apunta quién pagó cada cosa y Brosin calcula quién debe cuánto a quién, con los mínimos pagos posibles."), cta: tr("Nuevo grupo"), onCta: () => setSheet("new") })) : (React.createElement("div", { style: { display: "grid", gap: 12 } }, list.map((g) => React.createElement(GroupCard, { key: g.id, g: g, dispatch: dispatch, toast: toast })))),
+        React.createElement("button", { onClick: () => setSheet("import"), style: { ...iconBtn, width: "100%", height: 42, marginTop: 12, gap: 8, fontWeight: 700, fontSize: 12.5, color: C.textLo } }, tr("Importar grupo (pegar código)")),
+        React.createElement("div", { style: { height: 122 } }),
+        React.createElement(FAB, { onClick: () => setSheet("new"), label: tr("Grupo") }),
+        React.createElement(Sheet, { open: sheet === "new", onClose: () => setSheet(null), title: tr("Nuevo grupo de gastos") },
+            React.createElement(GroupForm, { me: state.profile.name, onSave: addNew })),
+        React.createElement(Sheet, { open: sheet === "import", onClose: () => setSheet(null), title: tr("Importar grupo") },
+            React.createElement(ImportGroupForm, { onImport: doImport }))));
+}
+function GroupForm({ me, onSave }) {
+    const [name, setName] = useState("");
+    const [members, setMembers] = useState((me ? [me, ""] : ["", ""]).map((n) => ({ id: uid(), name: n })));
+    const setM = (id, v) => setMembers((a) => a.map((m) => (m.id === id ? { ...m, name: v } : m)));
+    return (React.createElement("div", null,
+        React.createElement(Field, { label: tr("Nombre del grupo") },
+            React.createElement("input", { style: inputStyle, value: name, onChange: (e) => setName(e.target.value), placeholder: tr("Ej. Viaje a Lisboa, piso, cena…"), autoFocus: true })),
+        React.createElement(Field, { label: tr("Miembros") },
+            React.createElement("div", { style: { display: "grid", gap: 8 } },
+                members.map((m) => (React.createElement("div", { key: m.id, style: { display: "flex", gap: 8 } },
+                    React.createElement("input", { style: { ...inputStyle, flex: 1 }, value: m.name, onChange: (e) => setM(m.id, e.target.value), placeholder: tr("Nombre") }),
+                    members.length > 2 && React.createElement("button", { onClick: () => setMembers((a) => a.filter((x) => x.id !== m.id)), style: { ...iconBtn, width: 44, height: 44, color: C.textLo } },
+                        React.createElement(X, { size: 16 }))))),
+                React.createElement("button", { onClick: () => setMembers((a) => [...a, { id: uid(), name: "" }]), style: { ...iconBtn, width: "auto", paddingInline: 12, height: 38, gap: 6, fontSize: 13, fontWeight: 700 } },
+                    React.createElement(UserPlus, { size: 15 }),
+                    " ",
+                    tr("Añadir miembro")))),
+        React.createElement(PrimaryBtn, { full: true, color: C.purple, onClick: () => { const ms = members.filter((m) => m.name.trim()).map((m) => ({ id: m.id, name: m.name.trim() })); if (name.trim() && ms.length >= 2)
+                onSave({ name: name.trim(), members: ms }); } },
+            React.createElement(Check, { size: 18, strokeWidth: 3, color: "#fff" }),
+            " ",
+            React.createElement("span", { style: { color: "#fff" } }, tr("Crear")))));
+}
+function ImportGroupForm({ onImport }) {
+    const [code, setCode] = useState("");
+    return (React.createElement("div", null,
+        React.createElement(Field, { label: tr("Pega el código del grupo") },
+            React.createElement("textarea", { style: { ...inputStyle, minHeight: 90, resize: "vertical", fontFamily: "monospace", fontSize: 12 }, value: code, onChange: (e) => setCode(e.target.value), placeholder: "BRSN1:\u2026" })),
+        React.createElement(PrimaryBtn, { full: true, onClick: () => code.trim() && onImport(code.trim()) },
+            React.createElement(Download, { size: 18, strokeWidth: 2.6 }),
+            " ",
+            tr("Importar"))));
+}
+function GroupCard({ g, dispatch, toast }) {
+    const [open, setOpen] = useState(false);
+    const [addOpen, setAddOpen] = useState(false);
+    const [copied, setCopied] = useState(false);
+    const bal = groupBalances(g);
+    const plan = simplifyDebts(bal);
+    const total = groupTotal(g);
+    const nameOf = (id) => { const m = (g.members || []).find((x) => x.id === id); return m ? m.name : "?"; };
+    const patch = (p) => dispatch({ type: "update", col: "groups", id: g.id, patch: p });
+    const addExpense = (e) => { patch({ expenses: [{ id: uid(), date: todayISO(), ...e }, ...(g.expenses || [])] }); setAddOpen(false); };
+    const delExpense = (id) => patch({ expenses: (g.expenses || []).filter((e) => e.id !== id) });
+    const markPaid = (t) => patch({ settled: [{ id: uid(), date: todayISO(), from: t.from, to: t.to, amount: t.amount }, ...(g.settled || [])] });
+    const shareCode = () => { try {
+        const code = encodeShare({ kind: "brosin-group", v: 1, group: { name: g.name, members: g.members, expenses: g.expenses, settled: g.settled } });
+        navigator.clipboard && navigator.clipboard.writeText(code);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+        toast && toast("✓", tr("Código copiado — pásaselo a tus amigos"));
+    }
+    catch (e) { } };
+    const settledUp = plan.length === 0;
+    return (React.createElement("div", { style: { ...card, padding: 16 } },
+        React.createElement("div", { style: { display: "flex", alignItems: "flex-start", gap: 10 } },
+            React.createElement("div", { style: { width: 38, height: 38, borderRadius: 11, background: "rgba(255,212,0,.14)", display: "grid", placeItems: "center", flexShrink: 0 } },
+                React.createElement(Users, { size: 18, color: C.yellow })),
+            React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                React.createElement("div", { style: { color: C.textHi, fontWeight: 800, fontSize: 15.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, g.name),
+                React.createElement("div", { style: { color: C.textLo, fontSize: 12 } }, (g.members || []).map((m) => m.name).join(" · "))),
+            React.createElement("button", { onClick: () => { if (typeof window === "undefined" || window.confirm(`${tr("¿Borrar el grupo")} "${g.name}"?`))
+                    dispatch({ type: "remove", col: "groups", id: g.id }); }, style: { ...iconBtn, width: 30, height: 30, color: C.textLo } },
+                React.createElement(Trash2, { size: 14 }))),
+        React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12 } },
+            React.createElement("span", { style: { color: C.textLo, fontSize: 12, fontWeight: 700 } }, tr("Total del grupo")),
+            React.createElement("span", { style: { color: C.textHi, fontWeight: 900, fontSize: 17, fontVariantNumeric: "tabular-nums" } }, money(total))),
+        React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 } }, (g.members || []).map((m) => {
+            const v = Math.round((bal[m.id] || 0) * 100) / 100;
+            const pos = v > 0.004, neg = v < -0.004;
+            return (React.createElement("span", { key: m.id, style: { borderRadius: 999, padding: "5px 11px", fontSize: 12, fontWeight: 800, background: pos ? "rgba(61,220,132,.13)" : neg ? "rgba(255,92,92,.12)" : C.ink3, color: pos ? C.good : neg ? C.bad : C.textLo, border: `1px solid ${pos ? C.good : neg ? C.bad : C.line}` } },
+                m.name,
+                " ",
+                pos ? "+" : "",
+                money(v)));
+        })),
+        React.createElement("div", { style: { marginTop: 12 } }, settledUp ? (React.createElement("div", { style: { ...card, padding: "10px 12px", background: "rgba(61,220,132,.08)", border: `1px solid ${C.good}`, color: C.good, fontSize: 13, fontWeight: 800, textAlign: "center" } },
+            tr("Cuentas en paz"),
+            " \u2713")) : (React.createElement("div", { style: { display: "grid", gap: 6 } },
+            React.createElement("div", { style: { color: C.textLo, fontSize: 11, fontWeight: 800, letterSpacing: 0.8, textTransform: "uppercase" } },
+                tr("Pagos mínimos para quedar en paz"),
+                " (",
+                plan.length,
+                ")"),
+            plan.map((t, i) => (React.createElement("div", { key: i, style: { ...card, padding: "9px 12px", display: "flex", alignItems: "center", gap: 8, background: C.ink } },
+                React.createElement("span", { style: { flex: 1, color: C.textHi, fontSize: 13 } },
+                    React.createElement("b", null, nameOf(t.from)),
+                    " ",
+                    React.createElement("span", { style: { color: C.textLo } }, tr("le paga a")),
+                    " ",
+                    React.createElement("b", null, nameOf(t.to))),
+                React.createElement("span", { style: { color: C.yellow, fontWeight: 900, fontSize: 13.5, fontVariantNumeric: "tabular-nums" } }, money(t.amount)),
+                React.createElement("button", { onClick: () => markPaid(t), style: { ...iconBtn, width: "auto", height: 30, paddingInline: 10, fontSize: 11.5, fontWeight: 800, background: "rgba(61,220,132,.13)", borderColor: C.good, color: C.good } }, tr("Pagado")))))))),
+        addOpen ? (React.createElement(GroupExpenseForm, { members: g.members || [], onSave: addExpense, onCancel: () => setAddOpen(false) })) : (React.createElement("button", { onClick: () => setAddOpen(true), style: { ...iconBtn, width: "100%", height: 40, marginTop: 10, gap: 8, fontWeight: 800, fontSize: 13, background: C.purple, borderColor: C.purple, color: "#fff" } },
+            React.createElement(Plus, { size: 16, color: "#fff", strokeWidth: 3 }),
+            " ",
+            tr("Añadir gasto"))),
+        React.createElement("button", { onClick: () => setOpen((o) => !o), style: { ...iconBtn, width: "100%", height: 36, marginTop: 10, gap: 8, fontWeight: 800, fontSize: 12.5, background: C.ink3 } },
+            React.createElement(ChevronRight, { size: 14, style: { transform: open ? "rotate(90deg)" : "none", transition: "transform .2s" } }),
+            " ",
+            tr("Gastos"),
+            " (",
+            (g.expenses || []).length,
+            ")"),
+        open && (React.createElement("div", { style: { display: "grid", gap: 6, marginTop: 8 } },
+            (g.expenses || []).length === 0 && React.createElement("div", { style: { color: C.textLo, fontSize: 12.5, textAlign: "center", padding: "6px 0" } }, tr("Aún no hay gastos.")),
+            (g.expenses || []).map((e) => (React.createElement("div", { key: e.id, style: { ...card, padding: "9px 12px", display: "flex", alignItems: "center", gap: 10, background: C.ink } },
+                React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                    React.createElement("div", { style: { color: C.textHi, fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, e.desc || tr("Gasto")),
+                    React.createElement("div", { style: { color: C.textLo, fontSize: 11 } },
+                        fmtDate(e.date),
+                        " \u00B7 ",
+                        tr("pagó"),
+                        " ",
+                        nameOf(e.paidBy))),
+                React.createElement("span", { style: { color: C.textHi, fontWeight: 800, fontSize: 13, fontVariantNumeric: "tabular-nums" } }, money(e.amount)),
+                React.createElement("button", { onClick: () => delExpense(e.id), style: { background: "none", border: "none", color: C.textLo, cursor: "pointer", padding: 2 } },
+                    React.createElement(X, { size: 13 }))))))),
+        React.createElement("button", { onClick: shareCode, style: { ...iconBtn, width: "100%", height: 36, marginTop: 10, gap: 8, fontWeight: 700, fontSize: 12.5, color: C.textLo } }, copied ? React.createElement(React.Fragment, null,
+            React.createElement(Check, { size: 14, color: C.good }),
+            " ",
+            tr("Código copiado")) : React.createElement(React.Fragment, null,
+            React.createElement(Share2, { size: 14 }),
+            " ",
+            tr("Compartir grupo (código)")))));
+}
+function GroupExpenseForm({ members, onSave, onCancel }) {
+    const [desc, setDesc] = useState("");
+    const [amount, setAmount] = useState("");
+    const [paidBy, setPaidBy] = useState(members[0] ? members[0].id : "");
+    const [split, setSplit] = useState(members.map((m) => m.id));
+    const togg = (id) => setSplit((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+    return (React.createElement("div", { style: { ...card, padding: 12, background: C.ink, marginTop: 10 } },
+        React.createElement("input", { style: { ...inputStyle, marginBottom: 8 }, value: desc, onChange: (e) => setDesc(e.target.value), placeholder: tr("¿Qué fue? (cena, gasolina…)"), autoFocus: true }),
+        React.createElement("input", { type: "number", inputMode: "decimal", style: { ...inputStyle, marginBottom: 8 }, value: amount, onChange: (e) => setAmount(e.target.value), placeholder: tr("Importe €") }),
+        React.createElement("div", { style: { color: C.textLo, fontSize: 11, fontWeight: 800, letterSpacing: 0.5, marginBottom: 6 } }, tr("PAGÓ")),
+        React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 } }, members.map((m) => React.createElement(Chip, { key: m.id, active: paidBy === m.id, onClick: () => setPaidBy(m.id) }, m.name))),
+        React.createElement("div", { style: { color: C.textLo, fontSize: 11, fontWeight: 800, letterSpacing: 0.5, marginBottom: 6 } }, tr("ENTRE")),
+        React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 } }, members.map((m) => React.createElement(Chip, { key: m.id, active: split.includes(m.id), onClick: () => togg(m.id), accent: C.purple }, m.name))),
+        React.createElement("div", { style: { display: "flex", gap: 8 } },
+            React.createElement("button", { onClick: () => { const v = Number(amount); if (v > 0 && paidBy && split.length)
+                    onSave({ desc: desc.trim(), amount: v, paidBy, split: split.length === members.length ? [] : split }); }, style: miniBtn(C.yellow, C.ink) }, tr("Guardar")),
             React.createElement("button", { onClick: onCancel, style: miniBtn(C.ink3, C.textLo) }, tr("Cancelar")))));
 }
 /* ---------- Ahorro (huchas) ---------- */
