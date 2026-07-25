@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
 <title>Brosin OS</title>
 <meta name="description" content="Tu segundo cerebro. Bro, no te quedes sin." />
-<meta name="brosin-build" content="v24" />
+<meta name="brosin-build" content="v25" />
 <meta name="theme-color" content="#0a0a0a" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
@@ -59,7 +59,7 @@
 <div id="root">
   <div id="splash">
     <img class="bl" src="./brosin_eye.png" alt="Brosin" />
-    <div class="s">Despertando la colmena… · v24</div>
+    <div class="s">Despertando la colmena… · v25</div>
     <div class="l"></div>
   </div>
 </div>
@@ -78,7 +78,7 @@ import { Home, CalendarDays, Wallet, Package, Brain, Plus, Check, X, Target, Tre
    diccionario activo; si falta, devuelve el español (nunca se ve un hueco).
    Diccionarios: /i18n/{lang}.json — se descargan solo al elegir el idioma y
    quedan cacheados. El marco remonta con key={...lang} al cambiar. */
-const I18N_VER = "24"; // rompe la caché del SW al subir versión
+const I18N_VER = "25"; // rompe la caché del SW al subir versión
 const LANGS = [
     { k: "auto", label: "Automático" },
     { k: "es", label: "Español", flag: "🇪🇸", locale: "es-ES" },
@@ -87,6 +87,26 @@ const LANGS = [
     { k: "de", label: "Deutsch", flag: "🇩🇪", locale: "de-DE" },
     { k: "it", label: "Italiano", flag: "🇮🇹", locale: "it-IT" },
     { k: "pt", label: "Português", flag: "🇵🇹", locale: "pt-PT" },
+    { k: "nl", label: "Nederlands", flag: "🇳🇱", locale: "nl-NL" },
+    { k: "pl", label: "Polski", flag: "🇵🇱", locale: "pl-PL" },
+    { k: "sv", label: "Svenska", flag: "🇸🇪", locale: "sv-SE" },
+    { k: "da", label: "Dansk", flag: "🇩🇰", locale: "da-DK" },
+    { k: "no", label: "Norsk", flag: "🇳🇴", locale: "nb-NO" },
+    { k: "fi", label: "Suomi", flag: "🇫🇮", locale: "fi-FI" },
+    { k: "cs", label: "Čeština", flag: "🇨🇿", locale: "cs-CZ" },
+    { k: "sk", label: "Slovenčina", flag: "🇸🇰", locale: "sk-SK" },
+    { k: "hu", label: "Magyar", flag: "🇭🇺", locale: "hu-HU" },
+    { k: "ro", label: "Română", flag: "🇷🇴", locale: "ro-RO" },
+    { k: "el", label: "Ελληνικά", flag: "🇬🇷", locale: "el-GR" },
+    { k: "bg", label: "Български", flag: "🇧🇬", locale: "bg-BG" },
+    { k: "hr", label: "Hrvatski", flag: "🇭🇷", locale: "hr-HR" },
+    { k: "sl", label: "Slovenščina", flag: "🇸🇮", locale: "sl-SI" },
+    { k: "lt", label: "Lietuvių", flag: "🇱🇹", locale: "lt-LT" },
+    { k: "lv", label: "Latviešu", flag: "🇱🇻", locale: "lv-LV" },
+    { k: "et", label: "Eesti", flag: "🇪🇪", locale: "et-EE" },
+    { k: "ga", label: "Gaeilge", flag: "🇮🇪", locale: "ga-IE" },
+    { k: "mt", label: "Malti", flag: "🇲🇹", locale: "mt-MT" },
+    { k: "uk", label: "Українська", flag: "🇺🇦", locale: "uk-UA" },
 ];
 let I18N = {}; // diccionario activo (es -> traducción)
 let CUR_LANG = "es"; // idioma activo resuelto
