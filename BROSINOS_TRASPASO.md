@@ -138,7 +138,7 @@ const tri = (es, vars) => { let s = tr(es); for (const k in vars) s = s.split("{
 **El literal en castellano ES la clave.** Por eso, si falta una traducción, la app cae con elegancia al español y nunca se rompe. Eso permite publicar el "envoltorio" (`tr(...)`) primero y las traducciones después, en otra versión.
 
 - `tri()` es para frases con huecos: `tri("Te faltan {n} días", { n: 3 })`. **Traduce la frase entera y luego rellena** — nunca concatenes trozos traducidos sueltos.
-- Diccionarios: `brosin-pwa/i18n/{código}.json`, **25 ficheros** (el español no necesita fichero), **387 claves cada uno** ahora mismo, todos con exactamente las mismas claves.
+- Diccionarios: `brosin-pwa/i18n/{código}.json`, **25 ficheros** (el español no necesita fichero), **595 claves cada uno** (desde la v32), todos con exactamente las mismas claves.
 - Carga: `loadLang()` guarda en caché con clave `i18n_{lang}_v{I18N_VER}` y pide `./i18n/{lang}.json?v={I18N_VER}` con `no-cache`. **Si tocas los diccionarios, sube `I18N_VER`** o los móviles seguirán con el viejo.
 - Al cambiar de idioma se remonta el frame con `key={C.mode + "·" + CUR_LANG + "·" + langTick}`.
 
@@ -199,7 +199,7 @@ Variables de entorno necesarias en Cloudflare Pages: `ANTHROPIC_API_KEY`, `SUPAB
 | `brosin-pwa/` | Copia local de lo que va al repo (index.html, sw, i18n, iconos, SQL) |
 | `repo/` | Clon de git (`origin` = brosin-os) |
 | `.ghpat` | El token de GitHub, chmod 600 — **nunca se imprime** |
-| `i18n_new_keys_v31.json` | **Las 208 claves pendientes de traducir** |
+| `i18n_new_keys_v31.json` | Las 208 claves de la fase 4 — **ya fusionadas en la v32** |
 | `scan_v31.js` / `wrap_v31.js` / `dump_keys_v31.js` | Herramientas del bucle de idiomas |
 | `merge_v30.js` | Plantilla del script de fusión de traducciones (con validaciones) |
 | `test_v30.js` / `test_v31.js` | Bancos de pruebas (v31: 78 comprobaciones) |
@@ -335,22 +335,26 @@ El fichero `test_v31.js` (78 comprobaciones, todas en verde) cubre: forma y requ
 | v28 | `d68b429` | Grupos de gastos con pagos mínimos (estilo Splitwise) |
 | v29 | `f920826` | Cierre de mes financiero con IA |
 | v30 | `8257eae` | **Temas desbloqueables por racha** (+ separación `mode`/`base`) |
-| **v31** | **`eb42019`** | **Fase 4 de idiomas: helper `tri()` + 208 claves nuevas envueltas** ← actual |
+| v31 | `eb42019` | Fase 4 de idiomas: helper `tri()` + 208 claves nuevas envueltas |
+| **v32** | **`b226bc4` + `6237dfc`** | **25 idiomas completos: 595 claves en los 25 diccionarios, I18N_VER = 32** ← actual |
 
 ---
 
 ## PARTE 9 · TRABAJO PENDIENTE
 
-### 🔴 TAREA INMEDIATA — v32: fusionar las 208 traducciones
-El envoltorio ya está publicado (v31). Falta rellenar los diccionarios.
+### ✅ HECHA — v32: 25 idiomas completos (publicada el 30/07/2026)
+Los 25 diccionarios de `i18n/` tienen **595 claves exactas** cada uno. `index.html` lleva
+`brosin-build = v32` e `I18N_VER = 32`; `service-worker.js` lleva `CACHE = "brosin-os-v32"`.
+Verificado contra el repo remoto: 25 ficheros en `i18n/` y 595 claves en todos. **No hay nada que rehacer aquí.**
 
-- **Qué traducir:** las 208 claves de `/home/claude/i18n_new_keys_v31.json`.
-- **Estado actual:** los 25 diccionarios tienen **387 claves**; al terminar deben tener **595** exactas, todos igual.
-- **Ya hecho y validado:** en `/tmp/tr31/` hay **13 idiomas completos y comprobados** (208 claves, 0 vacías, 0 faltantes): `da, el, et, fi, ga, hr, lt, lv, mt, no, sl, sv, uk`. *(Si el sandbox se ha reiniciado, `/tmp` se pierde: van también dentro del ZIP del traspaso, en `tr31_parciales/`.)*
-- **Faltan 12 idiomas:** `bg, cs, de, en, fr, hu, it, nl, pl, pt, ro, sk`.
-- **Cómo fusionar:** copia el patrón de `merge_v30.js` — tabla incrustada `{ "clave española": { en:"…", fr:"…", … } }`, recorre los ficheros, **lanza excepción si falta alguna traducción o si el recuento de claves no coincide**, y escribe con `JSON.stringify(d, null, 1)`.
-- **Validaciones obligatorias antes de publicar:** (a) los 25 ficheros con el mismo número de claves; (b) ninguna cadena vacía; (c) las claves anteriores intactas (`git show HEAD:i18n/{f}` y comparar); (d) `I18N_VER` → `"32"`.
-- **Nota:** en la cuenta antigua los subagentes estaban limitados hasta el 31 de julio a las 06:00 UTC. En la cuenta nueva el límite se reinicia, así que probablemente puedas lanzar agentes traductores otra vez (en tandas de 4-6 idiomas, escribiendo cada uno su fichero, para que si uno muere no se pierda el resto).
+*Nota de publicación:* se subió desde la web de GitHub con la sesión de Chrome de Kevin, no con `git push`,
+porque ese día su ordenador no tenía shell disponible. Por eso son **dos commits** en vez de uno:
+`b226bc4` para la raíz (`index.html`, `service-worker.js`) y `6237dfc` para `i18n/`.
+
+### 🔴 TAREA INMEDIATA — ninguna pendiente
+La siguiente por hoja de ruta es **#8 Retos y rachas con amigos** (ver 🟢 más abajo).
+Ojo: el ritual de la PARTE 5 asume shell con Node. Si la sesión no tiene shell, se puede compilar
+en la nube y publicar por la web de GitHub, como se hizo con la v32.
 
 ### 🟡 Aparcado por Kevin
 Probar las notificaciones push reales en el móvil con el "médico de avisos" (`PushDoctor` en Perfil). Cita: *"deja el medico de avisos ya lo probaremos mas tarde"*.
@@ -390,6 +394,6 @@ Sí son públicas y ya están incrustadas en `build_pwa.js` (es correcto y segur
 - Scripts en ficheros, nunca `node -e` con comillas raras. Mensajes de commit con `-F fichero`.
 - Kevin no toca nada. Tú lo haces todo y se lo cuentas en dos frases.
 
-**Siguiente cosa que hacer: v32 — fusionar las 208 traducciones pendientes.**
+**Siguiente cosa que hacer: #8 Retos y rachas con amigos** (la v32 ya está publicada y verificada).
 
 *Bro, no te quedes sin.*
