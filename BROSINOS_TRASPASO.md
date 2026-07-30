@@ -336,25 +336,37 @@ El fichero `test_v31.js` (78 comprobaciones, todas en verde) cubre: forma y requ
 | v29 | `f920826` | Cierre de mes financiero con IA |
 | v30 | `8257eae` | **Temas desbloqueables por racha** (+ separación `mode`/`base`) |
 | v31 | `eb42019` | Fase 4 de idiomas: helper `tri()` + 208 claves nuevas envueltas |
-| **v32** | **`b226bc4` + `6237dfc`** | **25 idiomas completos: 595 claves en los 25 diccionarios, I18N_VER = 32** ← actual |
+| v32 | `b226bc4` + `6237dfc` | 25 idiomas completos: 595 claves en los 25 diccionarios |
+| **v33** | **`8500945`** | **10 arreglos de Kevin + Fijos, huchas compartidas y Retos con amigos** ← actual |
 
 ---
 
 ## PARTE 9 · TRABAJO PENDIENTE
 
-### ✅ HECHA — v32: 25 idiomas completos (publicada el 30/07/2026)
-Los 25 diccionarios de `i18n/` tienen **595 claves exactas** cada uno. `index.html` lleva
-`brosin-build = v32` e `I18N_VER = 32`; `service-worker.js` lleva `CACHE = "brosin-os-v32"`.
-Verificado contra el repo remoto: 25 ficheros en `i18n/` y 595 claves en todos. **No hay nada que rehacer aquí.**
+### ✅ HECHA — v33: los 10 arreglos de Kevin + retos con amigos (30/07/2026)
+Commit `8500945`. Entró todo esto: fecha de alta (`createdAt`) puesta **en el reducer** para que la
+herede todo lo que se cree; el chat por encima de los avisos (z-index 95 contra 90); teclado de
+iPhone con el nuevo hook `useKeyboardInset` (`visualViewport`); pasos de objetivo con día propio;
+tasador propio de coleccionables (`aiEstimateCollectible`) con error visible; botón "Actualizar la
+app" en Perfil; 7 tipos de evento nuevos; los cumpleaños de `people` ya salen en la Agenda como
+eventos virtuales; pestaña **Fijos** en Dinero; huchas de ahorro compartidas; beneficios por
+periodo (semana/mes/trimestre/semestre/año) en inversiones compartidas; y pestaña **Retos**, que
+es la #8 de la hoja de ruta.
 
-*Nota de publicación:* se subió desde la web de GitHub con la sesión de Chrome de Kevin, no con `git push`,
-porque ese día su ordenador no tenía shell disponible. Por eso son **dos commits** en vez de uno:
-`b226bc4` para la raíz (`index.html`, `service-worker.js`) y `6237dfc` para `i18n/`.
+Colecciones nuevas en el estado: `fixeds` y `challenges`. Ojo: `hydrate` ahora rellena cualquier
+colección que falte, así que los datos guardados de versiones viejas no rompen la app.
 
-### 🔴 TAREA INMEDIATA — ninguna pendiente
-La siguiente por hoja de ruta es **#8 Retos y rachas con amigos** (ver 🟢 más abajo).
-Ojo: el ritual de la PARTE 5 asume shell con Node. Si la sesión no tiene shell, se puede compilar
-en la nube y publicar por la web de GitHub, como se hizo con la v32.
+*Cómo se compiló sin Node (plan B que funciona):* el ordenador de Kevin no tenía shell. Se
+transpiló `BrosinOS.jsx` con `typescript@5.6.3` importado desde esm.sh **dentro de una pestaña de
+Chrome**, con las mismas opciones que `build_pwa.js`, y se comprobó que la salida es byte a byte
+idéntica a la de Node antes de fiarse. Luego solo se sustituye el bloque `<script type="module">`
+del `index.html` publicado y se suben los tres números de versión a mano.
+
+### 🔴 TAREA INMEDIATA — traducir los textos de la v33
+Los textos nuevos van envueltos en `tr()` / `tri()` pero **no están en los 25 diccionarios**, así que
+en cualquier idioma que no sea español se ven en español (no rompe nada, pero canta). Hay que sacar
+las claves nuevas, añadirlas a los 25 ficheros de `i18n/` y subir `I18N_VER` a 33. Mismo
+procedimiento que en la v32.
 
 ### 🟡 Aparcado por Kevin
 Probar las notificaciones push reales en el móvil con el "médico de avisos" (`PushDoctor` en Perfil). Cita: *"deja el medico de avisos ya lo probaremos mas tarde"*.
@@ -394,6 +406,6 @@ Sí son públicas y ya están incrustadas en `build_pwa.js` (es correcto y segur
 - Scripts en ficheros, nunca `node -e` con comillas raras. Mensajes de commit con `-F fichero`.
 - Kevin no toca nada. Tú lo haces todo y se lo cuentas en dos frases.
 
-**Siguiente cosa que hacer: #8 Retos y rachas con amigos** (la v32 ya está publicada y verificada).
+**Siguiente cosa que hacer: traducir a los 25 idiomas los textos nuevos de la v33 y subir `I18N_VER` a 33.**
 
 *Bro, no te quedes sin.*
