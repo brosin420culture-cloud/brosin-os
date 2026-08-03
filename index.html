@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
 <title>Brosin OS</title>
 <meta name="description" content="Tu segundo cerebro. Bro, no te quedes sin." />
-<meta name="brosin-build" content="v33" />
+<meta name="brosin-build" content="v34" />
 <meta name="theme-color" content="#0a0a0a" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
@@ -47,7 +47,7 @@
   // Local persistence shim so the app's window.storage works on-device (no Claude sandbox here)
   window.storage = {
     get: async function(k){ try { var v = localStorage.getItem("brosin:"+k); return v ? JSON.parse(v) : null; } catch(e){ return null; } },
-    set: async function(k,v){ try { localStorage.setItem("brosin:"+k, JSON.stringify(v)); } catch(e){} }
+    set: async function(k,v){ localStorage.setItem("brosin:"+k, JSON.stringify(v)); return true; }
   };
   // Register service worker (needs https or localhost)
   if ("serviceWorker" in navigator) {
@@ -59,7 +59,7 @@
 <div id="root">
   <div id="splash">
     <img class="bl" src="./brosin_eye.png" alt="Brosin" />
-    <div class="s">Despertando la colmena… · v33</div>
+    <div class="s">Despertando la colmena… · v34</div>
     <div class="l"></div>
   </div>
 </div>
@@ -658,8 +658,23 @@ const store = {
             if (typeof window !== "undefined" && window.storage && window.storage.set) {
                 await window.storage.set(key, value, { shared: false });
             }
+            return true;
         }
-        catch (e) { }
+        catch (e) {
+            // Casi siempre es que el almacén del móvil está lleno (fotos ocupan mucho).
+            // Antes esto se tragaba en silencio y parecía que había guardado. Ahora
+            // tiramos las copias automáticas viejas y reintentamos: es mejor perder
+            // copias antiguas que no poder guardar lo de hoy.
+            if (key !== AUTOBAK_KEY) {
+                try {
+                    await window.storage.set(AUTOBAK_KEY, [], { shared: false });
+                    await window.storage.set(key, value, { shared: false });
+                    return true;
+                }
+                catch (e2) { }
+            }
+            return false;
+        }
     },
 };
 /* ---------- cloud sync (Supabase, optional — only in the installed PWA) ---------- */
@@ -680,10 +695,15 @@ async function getSupa() {
 }
 async function cloudLoad(sb, userId) {
     try {
-        const { data, error } = await sb.from("app_state").select("data").eq("user_id", userId).maybeSingle();
-        if (error)
+        // updated_at también: sin él no hay forma de saber si la nube es más vieja que el móvil.
+        const { data, error } = await sb.from("app_state").select("data, updated_at").eq("user_id", userId).maybeSingle();
+        if (error || !data)
             return null;
-        return data ? data.data : null;
+        const d = data.data;
+        // copias de antes de la v34 no llevan sello dentro: usamos el de la fila
+        if (d && typeof d === "object" && !d.savedAt && data.updated_at)
+            d.savedAt = data.updated_at;
+        return d;
     }
     catch (e) {
         return null;
@@ -698,6 +718,8 @@ async function cloudSave(sb, userId, data) {
         return false;
     }
 }
+/* Sello de guardado. Sin esto no se puede decidir qué copia es la buena. */
+const stamp = (persist) => ({ ...persist, savedAt: nowISO() });
 /* ---------- Push notifications (avisos con la app cerrada) ---------- */
 const pushSupported = () => typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window && typeof Notification !== "undefined";
 function urlBase64ToUint8Array(base64String) {
@@ -6667,7 +6689,10 @@ function BrosinOS() {
     const stateRef = useRef(state);
     const cloudSkip = useRef(false);
     const syncedUserRef = useRef(null);
+    const localSavedAt = useRef(null);
+    const cloudUserRef = useRef(null);
     useEffect(() => { stateRef.current = state; });
+    useEffect(() => { cloudUserRef.current = cloudUser; }, [cloudUser]);
     /* lightbox bus */
     useEffect(() => { lightboxBus.open = (src) => setLightbox(src); return () => { lightboxBus.open = () => { }; }; }, []);
     /* sync optional AI key (used by the installed PWA) */
@@ -6707,15 +6732,30 @@ function BrosinOS() {
             if (!sb)
                 return;
             const cloudData = await cloudLoad(sb, cloudUser.id);
-            if (cloudData && (cloudData.profile || cloudData.events)) {
+            const nubeTieneAlgo = !!(cloudData && (cloudData.profile || cloudData.events));
+            const ms = (x) => { const t = Date.parse(x || ""); return isNaN(t) ? null : t; };
+            const cA = ms(cloudData && cloudData.savedAt);
+            const lA = ms(localSavedAt.current);
+            const s = stateRef.current || {};
+            const localVacio = !(s.profile && s.profile.created) && !(s.tx || []).length && !(s.events || []).length;
+            // REGLA: la nube solo pisa lo de este móvil si el móvil está vacío o si la copia
+            // de la nube es MÁS NUEVA. Antes pisaba siempre y sin mirar la fecha: por eso se
+            // perdían movimientos apuntados y reaparecían cosas ya borradas.
+            const traerNube = nubeTieneAlgo && (localVacio || (cA != null && (lA == null || cA > lA)));
+            if (traerNube) {
                 cloudSkip.current = true;
-                dispatch({ type: "hydrate", payload: { ...EMPTY, ...cloudData, ready: true } });
+                const { savedAt, ...rest } = cloudData;
+                localSavedAt.current = savedAt || null;
+                dispatch({ type: "hydrate", payload: { ...EMPTY, ...rest, ready: true } });
                 setCloudMsg({ ok: true, t: "Datos traídos de la nube ✓" });
             }
             else {
                 const { ready, ...persist } = stateRef.current;
-                await cloudSave(sb, cloudUser.id, persist);
-                setCloudMsg({ ok: true, t: "Sincronizado ✓" });
+                const ok = await cloudSave(sb, cloudUser.id, stamp(persist));
+                if (ok)
+                    setCloudMsg({ ok: true, t: nubeTieneAlgo ? "Este móvil tenía lo más nuevo: subido ✓" : "Sincronizado ✓" });
+                else
+                    setCloudMsg({ ok: false, t: "No se pudo guardar en la nube. Lo tuyo sigue a salvo en el móvil." });
             }
         })();
     }, [cloudUser, state.ready]);
@@ -6732,10 +6772,49 @@ function BrosinOS() {
             if (!sb)
                 return;
             const { ready, ...persist } = state;
-            cloudSave(sb, cloudUser.id, persist);
+            const ok = await cloudSave(sb, cloudUser.id, stamp(persist));
+            if (!ok)
+                setCloudMsg({ ok: false, t: "No se pudo guardar en la nube. Lo tuyo sigue a salvo en el móvil." });
         }, 900);
         return () => clearTimeout(id);
     }, [state, cloudUser]);
+    /* Guardar de golpe al cerrar la app o mandarla a segundo plano.
+       Antes se esperaba 400 ms (local) y 900 ms (nube): si cerrabas o iOS suspendía
+       la app antes, lo último apuntado no llegaba a ningún lado. */
+    useEffect(() => {
+        const flush = () => {
+            const s = stateRef.current;
+            if (!s || !s.ready)
+                return;
+            const { ready, ...persist } = s;
+            const sellado = stamp(persist);
+            localSavedAt.current = sellado.savedAt;
+            try {
+                store.set(STATE_KEY, sellado);
+            }
+            catch (e) { }
+            const u = cloudUserRef.current;
+            if (u) {
+                try {
+                    getSupa().then((sb) => { if (sb)
+                        cloudSave(sb, u.id, sellado); }).catch(() => { });
+                }
+                catch (e) { }
+            }
+        };
+        const onVis = () => { if (typeof document !== "undefined" && document.visibilityState === "hidden")
+            flush(); };
+        if (typeof window === "undefined")
+            return;
+        window.addEventListener("pagehide", flush);
+        window.addEventListener("beforeunload", flush);
+        document.addEventListener("visibilitychange", onVis);
+        return () => {
+            window.removeEventListener("pagehide", flush);
+            window.removeEventListener("beforeunload", flush);
+            document.removeEventListener("visibilitychange", onVis);
+        };
+    }, []);
     /* push: keep the server-side reminder schedule in sync (so avisos fire with the app closed) */
     useEffect(() => {
         if (!cloudUser || !state.ready)
@@ -6915,7 +6994,9 @@ function BrosinOS() {
             const saved = await store.get(STATE_KEY);
             const savedPin = await store.get(PIN_KEY);
             if (saved && typeof saved === "object") {
-                dispatch({ type: "hydrate", payload: { ...EMPTY, ...saved, ready: true } });
+                localSavedAt.current = saved.savedAt || null;
+                const { savedAt, ...rest } = saved;
+                dispatch({ type: "hydrate", payload: { ...EMPTY, ...rest, ready: true } });
                 if (!saved.profile || !saved.profile.created)
                     setNeedsOnboarding(true);
             }
@@ -6938,9 +7019,13 @@ function BrosinOS() {
             firstSave.current = false;
             return;
         }
-        const id = setTimeout(() => {
+        const id = setTimeout(async () => {
             const { ready, ...persist } = state;
-            store.set(STATE_KEY, persist);
+            const sellado = stamp(persist);
+            localSavedAt.current = sellado.savedAt;
+            const okLocal = await store.set(STATE_KEY, sellado);
+            if (!okLocal)
+                pushToast("No he podido guardar", "La memoria del móvil está llena. Borra fotos de la app o libera espacio.", false);
             // rolling safety snapshot at most once every 10 min
             const now = Date.now();
             if (now - lastSnap.current > 10 * 60 * 1000) {

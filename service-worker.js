@@ -1,5 +1,5 @@
 // Brosin OS — service worker (offline app shell + runtime cache + push)
-const CACHE = "brosin-os-v33";
+const CACHE = "brosin-os-v34";
 const LOCAL = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 
 self.addEventListener("install", (e) => {
