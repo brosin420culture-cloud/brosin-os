@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
 <title>Brosin OS</title>
 <meta name="description" content="Tu segundo cerebro. Bro, no te quedes sin." />
-<meta name="brosin-build" content="v40" />
+<meta name="brosin-build" content="v41" />
 <meta name="theme-color" content="#0a0a0a" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
@@ -59,7 +59,7 @@
 <div id="root">
   <div id="splash">
     <img class="bl" src="./brosin_eye.png" alt="Brosin" />
-    <div class="s">Despertando la colmena… · v40</div>
+    <div class="s">Despertando la colmena… · v41</div>
     <div class="l"></div>
   </div>
 </div>
@@ -78,7 +78,7 @@ import { Home, CalendarDays, Wallet, Package, Brain, Plus, Check, X, Target, Tre
    diccionario activo; si falta, devuelve el español (nunca se ve un hueco).
    Diccionarios: /i18n/{lang}.json — se descargan solo al elegir el idioma y
    quedan cacheados. El marco remonta con key={...lang} al cambiar. */
-const I18N_VER = "40"; // rompe la caché del SW al subir versión
+const I18N_VER = "41"; // rompe la caché del SW al subir versión
 const LANGS = [
     { k: "auto", label: "Automático" },
     { k: "es", label: "Español", flag: "🇪🇸", locale: "es-ES" },
@@ -5300,6 +5300,115 @@ function OrgEventForm({ initial, onSave, onDelete }) {
             " ",
             tr("Borrar evento"))));
 }
+/* ============================================================
+   OBJETOS — tu cartera de cosas que cotizan de verdad.
+   Reúne las piezas de todas las colecciones que tengan fuente de precio real
+   (oro/plata al peso, cartas) y las trata como una cartera: valor total, cuánto
+   se ha movido desde la última actualización, y quién sube y baja.
+   Nada de precios inventados: si no se ha actualizado, no se mueve.
+   ============================================================ */
+function ObjetosPanel({ state, dispatch, onIrAColecciones }) {
+    const [busy, setBusy] = useState(false);
+    const [prog, setProg] = useState(null);
+    const [msg, setMsg] = useState(null);
+    const [orden, setOrden] = useState("valor"); // valor | movimiento
+    const objetos = [];
+    (state.collections || []).forEach((c) => (c.items || []).forEach((it) => {
+        if (it.src)
+            objetos.push({ ...it, colId: c.id, colName: c.name });
+    }));
+    const total = objetos.reduce((s, o) => s + Number(o.value || 0), 0);
+    const base = objetos.reduce((s, o) => s + Number(o.prev != null ? o.prev : (o.value || 0)), 0);
+    const delta = total - base;
+    const pct = base ? (delta / base) * 100 : 0;
+    const movDe = (o) => (o.value != null && o.prev != null && o.prev !== 0) ? ((o.value - o.prev) / o.prev) * 100 : 0;
+    const lista = [...objetos].sort((a, b) => orden === "valor" ? Number(b.value || 0) - Number(a.value || 0) : Math.abs(movDe(b)) - Math.abs(movDe(a)));
+    const ultima = objetos.map((o) => o.pricedAt).filter(Boolean).sort().slice(-1)[0];
+    const actualizarTodo = async () => {
+        setBusy(true);
+        setMsg(null);
+        // copia de trabajo: si leyera del estado en cada vuelta, cada dispatch pisaría
+        // el anterior dentro de la misma colección
+        const trabajo = (state.collections || []).map((c) => ({ ...c, items: (c.items || []).map((x) => ({ ...x })) }));
+        const tocadas = new Set();
+        let ok = 0;
+        const fallos = [];
+        for (let i = 0; i < objetos.length; i++) {
+            const o = objetos[i];
+            setProg({ i: i + 1, n: objetos.length, nombre: o.name });
+            try {
+                const r = await precioDeObjeto(o);
+                const col = trabajo.find((c) => c.id === o.colId);
+                const it = col && col.items.find((x) => x.id === o.id);
+                if (it) {
+                    it.prev = it.value != null ? it.value : r.value;
+                    it.value = r.value;
+                    it.history = [...(it.history || []), { t: nowISO(), v: r.value }].slice(-30);
+                    it.pricedAt = nowISO();
+                    it.priceSrc = r.fuente;
+                    tocadas.add(col.id);
+                }
+                ok++;
+            }
+            catch (e) {
+                fallos.push(o.name + ": " + String((e && e.message) || e));
+            }
+            // las APIs sin clave capan las peticiones seguidas
+            await new Promise((res) => setTimeout(res, 700));
+        }
+        tocadas.forEach((id) => {
+            const col = trabajo.find((c) => c.id === id);
+            dispatch({ type: "update", col: "collections", id, patch: { items: col.items } });
+        });
+        setProg(null);
+        setBusy(false);
+        setMsg(fallos.length
+            ? { ok: false, t: tri("{a} de {b} actualizados. No pude con: {f}", { a: ok, b: objetos.length, f: fallos.slice(0, 2).join(" · ") }) }
+            : { ok: true, t: tri("{n} objetos actualizados", { n: ok }) });
+    };
+    if (objetos.length === 0) {
+        return React.createElement(EmptyState, { face: "neutral", title: tr("Aún no cotiza nada"), sub: tr("Entra en una pieza de tus colecciones, dale al lápiz y elige de dónde sale su precio: oro o plata al peso, carta Pokémon o carta Magic. Las que tengan fuente real aparecerán aquí."), cta: tr("Ir a Colecciones"), onCta: onIrAColecciones });
+    }
+    return (React.createElement("div", null,
+        React.createElement("div", { style: { ...card, padding: 16, marginBottom: 12 } },
+            React.createElement("div", { style: { color: C.textLo, fontSize: 10.5, fontWeight: 700, letterSpacing: 1.5 } }, tr("LO QUE VALE TODO")),
+            React.createElement("div", { style: { color: C.textHi, fontWeight: 900, fontSize: 30, lineHeight: 1.1, letterSpacing: -0.8 } }, money(total)),
+            React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, marginTop: 4 } },
+                React.createElement("span", { style: { color: delta > 0 ? C.good : delta < 0 ? C.bad : C.textLo, fontWeight: 800, fontSize: 13.5 } },
+                    delta > 0 ? "+" : "",
+                    money(delta),
+                    base ? ` (${delta >= 0 ? "+" : ""}${pct.toFixed(1)}%)` : ""),
+                React.createElement("span", { style: { color: C.textLo, fontSize: 11.5 } }, tr("desde la última actualización"))),
+            ultima && React.createElement("div", { style: { color: C.textLo, fontSize: 11, marginTop: 6 } }, tri("Precios de {d}", { d: fmtDateTime ? fmtDateTime(ultima) : fmtDate(String(ultima).slice(0, 10)) }))),
+        React.createElement("button", { onClick: actualizarTodo, disabled: busy, style: { ...iconBtn, width: "100%", height: 44, marginBottom: 12, gap: 8, fontWeight: 800, fontSize: 13.5, background: busy ? C.ink3 : C.yellow, color: busy ? C.textLo : C.ink, borderColor: busy ? C.line : C.yellow } },
+            React.createElement("span", { style: { display: "inline-flex", animation: busy ? "bspin 1s linear infinite" : "none" } },
+                React.createElement(RefreshCcw, { size: 16 })),
+            busy && prog ? tri("Actualizando {i}/{n}…", { i: prog.i, n: prog.n }) : tr("Actualizar precios")),
+        msg && React.createElement("div", { style: { color: msg.ok ? C.good : C.bad, fontSize: 12, fontWeight: 700, marginBottom: 12 } }, msg.t),
+        React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
+            React.createElement(Chip, { active: orden === "valor", onClick: () => setOrden("valor") }, tr("Por valor")),
+            React.createElement(Chip, { active: orden === "movimiento", onClick: () => setOrden("movimiento") }, tr("Los que más se mueven"))),
+        React.createElement("div", { style: { display: "grid", gap: 10 } }, lista.map((o) => {
+            const mv = movDe(o);
+            const sube = mv > 0;
+            return (React.createElement("div", { key: o.colId + ":" + o.id, style: { ...card, padding: 13, display: "flex", alignItems: "center", gap: 12 } },
+                o.photo ? React.createElement(Thumb, { src: o.photo, size: 42, radius: 11 }) : React.createElement("div", { style: { width: 42, height: 42, borderRadius: 11, background: C.ink3, display: "grid", placeItems: "center", flexShrink: 0 } },
+                    React.createElement(Star, { size: 17, color: C.yellow })),
+                React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                    React.createElement("div", { style: { color: C.textHi, fontWeight: 700, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, o.name),
+                    React.createElement("div", { style: { color: C.textLo, fontSize: 11.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } },
+                        o.colName,
+                        o.priceSrc ? " · " + o.priceSrc : "")),
+                (o.history || []).length > 1 && React.createElement(Sparkline, { history: o.history, color: mv === 0 ? C.textLo : sube ? C.good : C.bad, w: 48, h: 24 }),
+                React.createElement("div", { style: { textAlign: "right", flexShrink: 0 } },
+                    React.createElement("div", { style: { color: C.yellow, fontWeight: 800, fontSize: 14.5 } }, o.value != null ? money(o.value) : "—"),
+                    mv !== 0 && (React.createElement("div", { style: { color: sube ? C.good : C.bad, fontSize: 11.5, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 2 } },
+                        sube ? React.createElement(ArrowUp, { size: 11 }) : React.createElement(ArrowDown, { size: 11 }),
+                        Math.abs(mv).toFixed(1),
+                        "%")))));
+        })),
+        React.createElement("div", { style: { height: 40 } })));
+}
 function CollectionScreen({ state, dispatch }) {
     const [tab, setTab] = useState("colecciones");
     const [sheet, setSheet] = useState(null); // 'col' | 'item' | 'fiado'
@@ -5309,8 +5418,10 @@ function CollectionScreen({ state, dispatch }) {
         React.createElement(Title, { kicker: tr("Lo que tienes y prestas") }, tr("Colecciones")),
         React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 16, overflowX: "auto", paddingBottom: 4 } },
             React.createElement(Chip, { active: tab === "colecciones", onClick: () => setTab("colecciones") }, tr("Colecciones")),
+            React.createElement(Chip, { active: tab === "objetos", onClick: () => setTab("objetos") }, tr("Objetos")),
             React.createElement(Chip, { active: tab === "empresas", onClick: () => setTab("empresas") }, tr("Empresas y artistas")),
             React.createElement(Chip, { active: tab === "fiados", onClick: () => setTab("fiados") }, tr("Fiados"))),
+        tab === "objetos" && React.createElement(ObjetosPanel, { state: state, dispatch: dispatch, onIrAColecciones: () => setTab("colecciones") }),
         tab === "empresas" && React.createElement(OrgsPanel, { state: state, dispatch: dispatch }),
         tab === "colecciones" && (activeCol ? (React.createElement(ColDetail, { col: state.collections.find((c) => c.id === activeCol), onBack: () => setActiveCol(null), onAddItem: () => setSheet("item"), onDelItem: (iid) => {
                 const c = state.collections.find((c) => c.id === activeCol);
@@ -5351,7 +5462,7 @@ function CollectionScreen({ state, dispatch }) {
                 React.createElement("button", { onClick: () => dispatch({ type: "remove", col: "fiados", id: f.id }), style: { ...iconBtn, width: 32, height: 32, color: C.textLo } },
                     React.createElement(Trash2, { size: 14 }))))))))),
         React.createElement("div", { style: { height: 122 } }),
-        tab !== "empresas" && !(tab === "colecciones" && activeCol) && (React.createElement(FAB, { onClick: () => { setEditFiado(null); setSheet(tab === "fiados" ? "fiado" : "col"); }, label: tab === "fiados" ? tr("Fiado") : tr("Colección") })),
+        tab !== "empresas" && tab !== "objetos" && !(tab === "colecciones" && activeCol) && (React.createElement(FAB, { onClick: () => { setEditFiado(null); setSheet(tab === "fiados" ? "fiado" : "col"); }, label: tab === "fiados" ? tr("Fiado") : tr("Colección") })),
         React.createElement(Sheet, { open: sheet === "col", onClose: () => setSheet(null), title: tr("Nueva colección") },
             React.createElement(SimpleNameForm, { placeholder: tr("Ej. Vinilos, sneakers, cartas…"), onSave: (name) => { dispatch({ type: "add", col: "collections", item: { id: uid(), name, items: [] } }); setSheet(null); } })),
         React.createElement(Sheet, { open: sheet === "item", onClose: () => setSheet(null), title: tr("Añadir pieza") },
