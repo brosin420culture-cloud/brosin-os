@@ -385,10 +385,14 @@ precio solo cambia cuando se consulta de verdad. De ese paquete se aprovecharon 
 (qué endpoint llamar y qué campo leer), no su arquitectura: asumía Flutter y una lista fija en el
 repo, y aquí los objetos los mete el usuario.
 
-### 🟠 DEUDA CONOCIDA — el código fuente NO está en el repo
-`BrosinOS.jsx` y `build_pwa.js` viven solo en el ordenador de Kevin y en los ZIP de traspaso. El
-repo solo tiene el `index.html` ya compilado. Si se pierde esa carpeta, se pierde el fuente y solo
-queda el bundle. **Conviene subir el fuente al repo.**
+### ✅ RESUELTO — el código fuente ya está en el repo
+Desde el commit `dcd9be3` el fuente vive en **`fuente/BrosinOS.jsx`** (8256 líneas) y el compilador
+en **`fuente/build_pwa.js`**. Antes solo estaba el `index.html` compilado y el fuente vivía en el
+ordenador de Kevin: si se perdía esa carpeta, quedaba un bundle de 600 KB imposible de mantener.
+
+**El repo es ahora la fuente de la verdad.** Al tocar el código: edita `fuente/BrosinOS.jsx`,
+compílalo, y sube el fuente JUNTO con el `index.html` generado. Si subes solo el compilado, la
+siguiente sesión partirá de un fuente viejo y deshará trabajo.
 
 ### 🟠 DEUDA CONOCIDA — terminología inconsistente en algunos idiomas
 El lote de la v39 introdujo términos que chocan con el glosario anterior: en francés "Mouvements"
