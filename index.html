@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
 <title>Brosin OS</title>
 <meta name="description" content="Tu segundo cerebro. Bro, no te quedes sin." />
-<meta name="brosin-build" content="v34" />
+<meta name="brosin-build" content="v35" />
 <meta name="theme-color" content="#0a0a0a" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
@@ -59,7 +59,7 @@
 <div id="root">
   <div id="splash">
     <img class="bl" src="./brosin_eye.png" alt="Brosin" />
-    <div class="s">Despertando la colmena… · v34</div>
+    <div class="s">Despertando la colmena… · v35</div>
     <div class="l"></div>
   </div>
 </div>
@@ -1376,6 +1376,23 @@ function EmptyState({ title, sub, face = "sleep", cta, onCta }) {
             } }, cta))));
 }
 /* Bottom sheet modal */
+/* Apilado de paneles: lo ÚLTIMO que se abre queda encima, siempre.
+   Con números fijos no hay manera: si el chat está por encima de los paneles,
+   tapa lo que abras desde él; y si está por debajo, se lo comen los avisos.
+   Cada panel coge un número nuevo al abrirse y así el orden es el real. */
+let _zCounter = 90;
+function useTopZ(active) {
+    const zRef = useRef(90);
+    const prev = useRef(false);
+    if (active && !prev.current) {
+        if (_zCounter > 800)
+            _zCounter = 90; // no dejar que crezca sin fin
+        _zCounter += 2;
+        zRef.current = _zCounter;
+    }
+    prev.current = active;
+    return zRef.current;
+}
 /* Alto del teclado virtual (iOS/Android). Devuelve 0 si no hay teclado abierto.
    Sin esto, en iPhone el teclado tapa el campo de escribir de los paneles. */
 function useKeyboardInset() {
@@ -1397,6 +1414,7 @@ function useKeyboardInset() {
 }
 function Sheet({ open, onClose, title, children }) {
     const kbInset = useKeyboardInset();
+    const z = useTopZ(open);
     if (!open)
         return null;
     // Portaled to <body> with position:fixed so it always covers the real
@@ -1407,7 +1425,7 @@ function Sheet({ open, onClose, title, children }) {
             position: "fixed",
             inset: 0,
             background: "rgba(0,0,0,.62)",
-            zIndex: 92,
+            zIndex: z,
             paddingBottom: kbInset,
             display: "flex",
             alignItems: "flex-end",
@@ -1841,7 +1859,7 @@ function Legend({ items }) {
 }
 /* in-app toasts */
 function Toasts({ items, onDismiss }) {
-    return (React.createElement("div", { style: { position: "absolute", left: 0, right: 0, bottom: "calc(84px + env(safe-area-inset-bottom))", zIndex: 90, padding: "0 12px", display: "grid", gap: 8, pointerEvents: "none" } }, items.map((t) => React.createElement(ToastItem, { key: t.id, t: t, onDismiss: onDismiss }))));
+    return (React.createElement("div", { style: { position: "fixed", left: 0, right: 0, bottom: "calc(84px + env(safe-area-inset-bottom))", zIndex: 88, padding: "0 12px", display: "grid", gap: 8, pointerEvents: "none" } }, items.map((t) => React.createElement(ToastItem, { key: t.id, t: t, onDismiss: onDismiss }))));
 }
 function ToastItem({ t, onDismiss }) {
     const [dx, setDx] = useState(0);
@@ -2338,7 +2356,7 @@ function HomeScreen({ state, dispatch, go, ai, openMarkets, toast }) {
         const id = setTimeout(() => { setBriefOpen(true); dispatch({ type: "profile", payload: { briefSeen: t } }); }, 650);
         return () => clearTimeout(id);
     }, [state.ready]);
-    const [homeTab, setHomeTab] = useState("hoy"); // hoy | semana | vistazo
+    const [homeTab, setHomeTab] = useState("vistazo"); // vistazo | hoy | semana — se abre en Vistazo
     const pad = (n) => String(n).padStart(2, "0");
     const localISO = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
     const now = new Date();
@@ -2360,7 +2378,7 @@ function HomeScreen({ state, dispatch, go, ai, openMarkets, toast }) {
     const weekdayLong = now.toLocaleDateString(LOCALE, { weekday: "long" });
     const monthLong = now.toLocaleDateString(LOCALE, { month: "long" });
     const birthday = (state.people || []).map((p) => ({ p, d: daysUntilBirthday(p.birthday) })).filter((x) => x.d != null && x.d <= 10).sort((a, b) => a.d - b.d)[0];
-    const tabs = [{ k: "hoy", label: tr("Hoy") }, { k: "semana", label: tr("Semana") }, { k: "vistazo", label: tr("Vistazo") }];
+    const tabs = [{ k: "vistazo", label: tr("Vistazo") }, { k: "hoy", label: tr("Hoy") }, { k: "semana", label: tr("Semana") }];
     return (React.createElement("div", { style: { padding: "18px 18px 0" } },
         React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 18 } },
             React.createElement(BeeMark, { size: 40, face: "happy" }),
@@ -4607,6 +4625,7 @@ function DebtForm({ initial, onSave, onDelete }) {
     const [person, setPerson] = useState((initial === null || initial === void 0 ? void 0 : initial.person) || "");
     const [amount, setAmount] = useState((initial === null || initial === void 0 ? void 0 : initial.amount) != null ? String(initial.amount) : "");
     const [note, setNote] = useState((initial === null || initial === void 0 ? void 0 : initial.note) || "");
+    const [date, setDate] = useState(((initial === null || initial === void 0 ? void 0 : initial.date) || todayISO()).slice(0, 10));
     return (React.createElement("div", null,
         React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 14 } },
             React.createElement("button", { onClick: () => setDir("meDeben"), style: typeTab(dir === "meDeben", C.good) }, tr("Me deben")),
@@ -4615,9 +4634,11 @@ function DebtForm({ initial, onSave, onDelete }) {
             React.createElement("input", { style: inputStyle, value: person, onChange: (e) => setPerson(e.target.value), placeholder: tr("Nombre"), autoFocus: true })),
         React.createElement(Field, { label: tr("Importe (€)") },
             React.createElement("input", { type: "number", inputMode: "decimal", style: { ...inputStyle, fontSize: 20, fontWeight: 800 }, value: amount, onChange: (e) => setAmount(e.target.value), placeholder: "0,00" })),
+        React.createElement(Field, { label: tr("Día") },
+            React.createElement("input", { type: "date", style: inputStyle, value: date, onChange: (e) => setDate(e.target.value) })),
         React.createElement(Field, { label: tr("Concepto") },
             React.createElement("input", { style: inputStyle, value: note, onChange: (e) => setNote(e.target.value), placeholder: tr("Opcional") })),
-        React.createElement(PrimaryBtn, { full: true, onClick: () => person.trim() && amount && onSave({ dir, person: person.trim(), amount: Number(amount), note }) },
+        React.createElement(PrimaryBtn, { full: true, onClick: () => person.trim() && amount && onSave({ dir, person: person.trim(), amount: Number(amount), note, date: date || todayISO() }) },
             React.createElement(Check, { size: 18, strokeWidth: 3 }),
             " ",
             initial ? tr("Guardar cambios") : tr("Guardar")),
@@ -4653,6 +4674,7 @@ function DebtCard({ d, dispatch, onEdit }) {
                 React.createElement("div", { style: { color: C.textLo, fontSize: 12 } },
                     d.dir === "meDeben" ? tr("Te debe") : tr("Le debes"),
                     d.note ? ` · ${d.note}` : ""),
+                d.date && React.createElement("div", { style: { color: C.textLo, fontSize: 11.5, marginTop: 2 } }, fmtDate(String(d.date).slice(0, 10))),
                 React.createElement(CreatedAt, { at: d.createdAt })),
             React.createElement("div", { style: { color: d.dir === "meDeben" ? C.good : C.bad, fontWeight: 900, fontSize: 16 } }, money(d.amount))),
         adj ? (React.createElement("div", { style: { marginTop: 10 } },
@@ -5074,6 +5096,14 @@ function CollectionItemCard({ item, onUpdate, onDel }) {
     const [val, setVal] = useState("");
     const [aiBusy, setAiBusy] = useState(false);
     const [aiMsg, setAiMsg] = useState(null);
+    // Editar la pieza. Antes había que borrarla y volver a crearla, perdiendo el histórico.
+    const [editInfo, setEditInfo] = useState(false);
+    const [eName, setEName] = useState(item.name || "");
+    const [eNote, setENote] = useState(item.note || "");
+    const [ePhoto, setEPhoto] = useState(item.photo || null);
+    const abrirEdicion = () => { setEName(item.name || ""); setENote(item.note || ""); setEPhoto(item.photo || null); setEditInfo(true); };
+    const guardarEdicion = () => { if (!eName.trim())
+        return; onUpdate({ name: eName.trim(), note: eNote, photo: ePhoto }); setEditInfo(false); };
     const change = item.value != null && item.prev != null && item.prev !== 0 ? ((item.value - item.prev) / item.prev) * 100 : null;
     const up = change != null && change >= 0;
     const setValue = (newVal) => {
@@ -5121,9 +5151,20 @@ function CollectionItemCard({ item, onUpdate, onDel }) {
             React.createElement("input", { type: "number", inputMode: "decimal", autoFocus: true, style: { ...inputStyle, padding: "9px 12px" }, value: val, onChange: (e) => setVal(e.target.value), placeholder: tr("Nuevo valor en €") }),
             React.createElement("button", { onClick: () => { if (val)
                     setValue(val); setVal(""); setEditing(false); }, style: { ...iconBtn, width: 42, height: 42, background: C.yellow, color: C.ink, borderColor: C.yellow } },
-                React.createElement(Check, { size: 18, strokeWidth: 3 })))) : (React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 10 } },
+                React.createElement(Check, { size: 18, strokeWidth: 3 })))) : editInfo ? (React.createElement("div", { style: { marginTop: 10 } },
+            React.createElement(Field, { label: tr("Foto (opcional)") },
+                React.createElement(PhotoPicker, { value: ePhoto, onChange: setEPhoto })),
+            React.createElement(Field, { label: tr("Pieza") },
+                React.createElement("input", { style: inputStyle, value: eName, onChange: (e) => setEName(e.target.value), placeholder: tr("Nombre de la pieza"), autoFocus: true })),
+            React.createElement(Field, { label: tr("Nota / detalle") },
+                React.createElement("input", { style: inputStyle, value: eNote, onChange: (e) => setENote(e.target.value), placeholder: tr("Estado, edición, año…") })),
+            React.createElement("div", { style: { display: "flex", gap: 8 } },
+                React.createElement("button", { onClick: guardarEdicion, style: miniBtn(C.yellow, C.ink) }, tr("Guardar")),
+                React.createElement("button", { onClick: () => setEditInfo(false), style: miniBtn(C.ink3, C.textLo) }, tr("Cancelar"))))) : (React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 10 } },
             React.createElement("button", { onClick: () => setEditing(true), style: miniBtn(C.ink3, C.textHi) }, tr("Actualizar valor")),
             React.createElement("button", { onClick: estimate, disabled: aiBusy, style: miniBtn("rgba(144,19,254,.18)", C.purple) }, aiBusy ? "Estimando…" : "Estimar con IA"),
+            React.createElement("button", { onClick: abrirEdicion, title: tr("Editar pieza"), style: { ...iconBtn, width: 38, height: 38, color: C.textLo } },
+                React.createElement(Pencil, { size: 14 })),
             React.createElement("button", { onClick: onDel, style: { ...iconBtn, width: 38, height: 38, color: C.textLo } },
                 React.createElement(Trash2, { size: 14 })))),
         aiMsg && (React.createElement("div", { style: { marginTop: 8, fontSize: 11.5, fontWeight: 700, color: aiMsg.ok ? C.purple : C.bad } }, aiMsg.text))));
@@ -5332,6 +5373,7 @@ function ChatSheet({ onClose, state, dispatch }) {
     const [err, setErr] = useState(null);
     const scroller = useRef(null);
     const kbInset = useKeyboardInset();
+    const z = useTopZ(true);
     useEffect(() => { if (scroller.current)
         scroller.current.scrollTop = scroller.current.scrollHeight; }, [msgs, loading]);
     // al abrirse el teclado, mantener el último mensaje a la vista
@@ -5364,7 +5406,7 @@ function ChatSheet({ onClose, state, dispatch }) {
             setLoading(false);
         }
     };
-    return (React.createElement("div", { onClick: onClose, style: { position: "fixed", inset: 0, background: "rgba(0,0,0,.65)", zIndex: 95, paddingBottom: kbInset, display: "flex", flexDirection: "column", justifyContent: "flex-end", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)" } },
+    return (React.createElement("div", { onClick: onClose, style: { position: "fixed", inset: 0, background: "rgba(0,0,0,.65)", zIndex: z, paddingBottom: kbInset, display: "flex", flexDirection: "column", justifyContent: "flex-end", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)" } },
         React.createElement("div", { onClick: (e) => e.stopPropagation(), style: { background: C.surfSheet, borderTopLeftRadius: 28, borderTopRightRadius: 28, borderTop: `1px solid ${C.edgeHi}`, boxShadow: `0 1px 0 rgba(255,255,255,.06) inset, 0 -18px 50px ${C.dropSheet}`, height: "88%", display: "flex", flexDirection: "column", animation: "bsheet .32s cubic-bezier(.32,1.25,.45,1)" } },
             React.createElement("div", { style: { padding: "14px 18px", borderBottom: `1px solid ${C.line}`, display: "flex", alignItems: "center", gap: 12 } },
                 React.createElement(BeeMark, { size: 38, face: "happy", color: C.purple }),
