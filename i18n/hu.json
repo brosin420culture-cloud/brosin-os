@@ -696,5 +696,18 @@
  "Que quede solo dentro de Inversiones": "Csak a Befektetéseken belül marad",
  "Solo la ganancia": "Csak a nyereség",
  "Solo si apuntaste la compra como gasto": "Csak akkor, ha kiadásként feljegyezted a vásárlást",
- "¿Qué apunto en Movimientos?": "Mit jegyezzek fel a Tranzakciókban?"
+ "¿Qué apunto en Movimientos?": "Mit jegyezzek fel a Tranzakciókban?",
+ "Actualizando {i}/{n}…": "Frissítés: {i}/{n}…",
+ "Actualizar precios": "Árak frissítése",
+ "Aún no cotiza nada": "Még semmi nincs árazva",
+ "Entra en una pieza de tus colecciones, dale al lápiz y elige de dónde sale su precio: oro o plata al peso, carta Pokémon o carta Magic. Las que tengan fuente real aparecerán aquí.": "Nyiss meg egy darabot a gyűjteményeidből, koppints a ceruzára, és válaszd ki, honnan jön az ára: arany vagy ezüst súlyra, Pokémon kártya vagy Magic kártya. Amelyiknek valódi forrása van, itt fog megjelenni.",
+ "Ir a Colecciones": "Ugrás a Gyűjteményekhez",
+ "LO QUE VALE TODO": "AMENNYIT MINDEZ ÉR",
+ "Los que más se mueven": "A legtöbbet mozgók",
+ "Objetos": "Tárgyak",
+ "Por valor": "Érték szerint",
+ "Precios de {d}": "{d} árai",
+ "desde la última actualización": "az utolsó frissítés óta",
+ "{a} de {b} actualizados. No pude con: {f}": "{a}/{b} frissítve. Nem sikerült: {f}",
+ "{n} objetos actualizados": "{n} tárgy frissítve"
 }

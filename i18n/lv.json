@@ -696,5 +696,18 @@
  "Que quede solo dentro de Inversiones": "Lai tas paliek tikai Ieguldījumos",
  "Solo la ganancia": "Tikai peļņa",
  "Solo si apuntaste la compra como gasto": "Tikai, ja pirkumu reģistrēji kā izdevumu",
- "¿Qué apunto en Movimientos?": "Ko es reģistrēju Darījumos?"
+ "¿Qué apunto en Movimientos?": "Ko es reģistrēju Darījumos?",
+ "Actualizando {i}/{n}…": "Atjaunināšana {i}/{n}…",
+ "Actualizar precios": "Atjaunināt cenas",
+ "Aún no cotiza nada": "Vēl nekam nav kotējuma",
+ "Entra en una pieza de tus colecciones, dale al lápiz y elige de dónde sale su precio: oro o plata al peso, carta Pokémon o carta Magic. Las que tengan fuente real aparecerán aquí.": "Atver gabalu no savām kolekcijām, pieskaries zīmulim un izvēlies, no kurienes nāk tā cena: zelts vai sudrabs pēc svara, Pokémon kārte vai Magic kārte. Tie ar reālu avotu parādīsies šeit.",
+ "Ir a Colecciones": "Iet uz Kolekcijām",
+ "LO QUE VALE TODO": "CIK VISS IR VĒRTS",
+ "Los que más se mueven": "Tie, kas kustas visvairāk",
+ "Objetos": "Priekšmeti",
+ "Por valor": "Pēc vērtības",
+ "Precios de {d}": "Cenas uz {d}",
+ "desde la última actualización": "kopš pēdējās atjaunināšanas",
+ "{a} de {b} actualizados. No pude con: {f}": "Atjaunināti {a} no {b}. Neizdevās ar: {f}",
+ "{n} objetos actualizados": "{n} priekšmeti atjaunināti"
 }

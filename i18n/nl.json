@@ -696,5 +696,18 @@
  "Que quede solo dentro de Inversiones": "Blijft alleen binnen Beleggingen",
  "Solo la ganancia": "Alleen de winst",
  "Solo si apuntaste la compra como gasto": "Alleen als je de aankoop als uitgave hebt genoteerd",
- "¿Qué apunto en Movimientos?": "Wat noteer ik bij Transacties?"
+ "¿Qué apunto en Movimientos?": "Wat noteer ik bij Transacties?",
+ "Actualizando {i}/{n}…": "Bijwerken {i}/{n}…",
+ "Actualizar precios": "Prijzen bijwerken",
+ "Aún no cotiza nada": "Nog geen koers bekend",
+ "Entra en una pieza de tus colecciones, dale al lápiz y elige de dónde sale su precio: oro o plata al peso, carta Pokémon o carta Magic. Las que tengan fuente real aparecerán aquí.": "Open een stuk uit je collecties, tik op het potlood en kies waar de prijs vandaan komt: goud of zilver op gewicht, een Pokémon-kaart of een Magic-kaart. Degene met een echte bron verschijnen hier.",
+ "Ir a Colecciones": "Naar Collecties",
+ "LO QUE VALE TODO": "WAT ALLES WAARD IS",
+ "Los que más se mueven": "Wat het meest beweegt",
+ "Objetos": "Voorwerpen",
+ "Por valor": "Op waarde",
+ "Precios de {d}": "Prijzen van {d}",
+ "desde la última actualización": "sinds de laatste update",
+ "{a} de {b} actualizados. No pude con: {f}": "{a} van {b} bijgewerkt. Lukte niet bij: {f}",
+ "{n} objetos actualizados": "{n} voorwerpen bijgewerkt"
 }

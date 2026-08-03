@@ -696,5 +696,18 @@
  "Que quede solo dentro de Inversiones": "Kad tai liktų tik Investicijose",
  "Solo la ganancia": "Tik pelnas",
  "Solo si apuntaste la compra como gasto": "Tik jei pirkimą įrašei kaip išlaidą",
- "¿Qué apunto en Movimientos?": "Ką įrašau Operacijose?"
+ "¿Qué apunto en Movimientos?": "Ką įrašau Operacijose?",
+ "Actualizando {i}/{n}…": "Atnaujinama {i}/{n}…",
+ "Actualizar precios": "Atnaujinti kainas",
+ "Aún no cotiza nada": "Kol kas nieko nekotiruojama",
+ "Entra en una pieza de tus colecciones, dale al lápiz y elige de dónde sale su precio: oro o plata al peso, carta Pokémon o carta Magic. Las que tengan fuente real aparecerán aquí.": "Atidaryk gabalą iš savo kolekcijų, palieski pieštuką ir pasirink, iš kur gaunama jo kaina: auksas ar sidabras pagal svorį, Pokémon kortelė ar Magic kortelė. Tie, kurie turi tikrą šaltinį, pasirodys čia.",
+ "Ir a Colecciones": "Eiti į Kolekcijas",
+ "LO QUE VALE TODO": "KIEK VISKAS VERTAS",
+ "Los que más se mueven": "Daugiausiai judantys",
+ "Objetos": "Daiktai",
+ "Por valor": "Pagal vertę",
+ "Precios de {d}": "{d} kainos",
+ "desde la última actualización": "nuo paskutinio atnaujinimo",
+ "{a} de {b} actualizados. No pude con: {f}": "Atnaujinta {a} iš {b}. Nepavyko su: {f}",
+ "{n} objetos actualizados": "{n} daiktų atnaujinta"
 }

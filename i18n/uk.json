@@ -696,5 +696,18 @@
  "Que quede solo dentro de Inversiones": "Щоб це залишилося тільки в Інвестиціях",
  "Solo la ganancia": "Тільки прибуток",
  "Solo si apuntaste la compra como gasto": "Тільки якщо покупку було записано як витрату",
- "¿Qué apunto en Movimientos?": "Що я записую в Транзакціях?"
+ "¿Qué apunto en Movimientos?": "Що я записую в Транзакціях?",
+ "Actualizando {i}/{n}…": "Оновлення {i}/{n}…",
+ "Actualizar precios": "Оновити ціни",
+ "Aún no cotiza nada": "Поки що нічого не котирується",
+ "Entra en una pieza de tus colecciones, dale al lápiz y elige de dónde sale su precio: oro o plata al peso, carta Pokémon o carta Magic. Las que tengan fuente real aparecerán aquí.": "Відкрий предмет зі своїх колекцій, натисни на олівець і вибери, звідки береться його ціна: золото або срібло на вагу, карта Pokémon або карта Magic. Ті, що мають реальне джерело, з'являться тут.",
+ "Ir a Colecciones": "Перейти до Колекцій",
+ "LO QUE VALE TODO": "СКІЛЬКИ ВСЕ ЦЕ КОШТУЄ",
+ "Los que más se mueven": "Ті, що рухаються найбільше",
+ "Objetos": "Речі",
+ "Por valor": "За вартістю",
+ "Precios de {d}": "Ціни на {d}",
+ "desde la última actualización": "з моменту останнього оновлення",
+ "{a} de {b} actualizados. No pude con: {f}": "Оновлено {a} з {b}. Не вдалося з: {f}",
+ "{n} objetos actualizados": "{n} речей оновлено"
 }

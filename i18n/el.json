@@ -696,5 +696,18 @@
  "Que quede solo dentro de Inversiones": "Μένει μόνο μέσα στις Επενδύσεις",
  "Solo la ganancia": "Μόνο το κέρδος",
  "Solo si apuntaste la compra como gasto": "Μόνο αν σημείωσες την αγορά ως έξοδο",
- "¿Qué apunto en Movimientos?": "Τι σημειώνω στις Κινήσεις;"
+ "¿Qué apunto en Movimientos?": "Τι σημειώνω στις Κινήσεις;",
+ "Actualizando {i}/{n}…": "Ενημέρωση {i}/{n}…",
+ "Actualizar precios": "Ενημέρωση τιμών",
+ "Aún no cotiza nada": "Δεν υπάρχει ακόμα καμία τιμή",
+ "Entra en una pieza de tus colecciones, dale al lápiz y elige de dónde sale su precio: oro o plata al peso, carta Pokémon o carta Magic. Las que tengan fuente real aparecerán aquí.": "Μπες σε ένα κομμάτι από τις συλλογές σου, πάτησε το μολύβι και διάλεξε από πού παίρνει την τιμή του: χρυσός ή ασήμι σε βάρος, κάρτα Pokémon ή κάρτα Magic. Όσα έχουν πραγματική πηγή θα εμφανιστούν εδώ.",
+ "Ir a Colecciones": "Μετάβαση στις Συλλογές",
+ "LO QUE VALE TODO": "ΟΣΟ ΑΞΙΖΕΙ ΤΟ ΣΥΝΟΛΟ",
+ "Los que más se mueven": "Αυτά που κινούνται περισσότερο",
+ "Objetos": "Αντικείμενα",
+ "Por valor": "Κατά αξία",
+ "Precios de {d}": "Τιμές της {d}",
+ "desde la última actualización": "από την τελευταία ενημέρωση",
+ "{a} de {b} actualizados. No pude con: {f}": "Ενημερώθηκαν {a} από {b}. Δεν τα κατάφερα με: {f}",
+ "{n} objetos actualizados": "{n} αντικείμενα ενημερώθηκαν"
 }

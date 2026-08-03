@@ -696,5 +696,18 @@
  "Que quede solo dentro de Inversiones": "Ostane samo znotraj Naložb",
  "Solo la ganancia": "Samo dobiček",
  "Solo si apuntaste la compra como gasto": "Samo če je bil nakup zapisan kot odhodek",
- "¿Qué apunto en Movimientos?": "Kaj zapišem v Transakcijah?"
+ "¿Qué apunto en Movimientos?": "Kaj zapišem v Transakcijah?",
+ "Actualizando {i}/{n}…": "Posodabljam {i}/{n}…",
+ "Actualizar precios": "Posodobi cene",
+ "Aún no cotiza nada": "Še nič ne kotira",
+ "Entra en una pieza de tus colecciones, dale al lápiz y elige de dónde sale su precio: oro o plata al peso, carta Pokémon o carta Magic. Las que tengan fuente real aparecerán aquí.": "Odpri kos iz svojih zbirk, tapni na svinčnik in izberi, od kod prihaja njegova cena: zlato ali srebro na težo, karta Pokémon ali karta Magic. Tisti z resničnim virom se bodo prikazali tukaj.",
+ "Ir a Colecciones": "Pojdi na Zbirke",
+ "LO QUE VALE TODO": "KOLIKO JE VREDNO VSE SKUPAJ",
+ "Los que más se mueven": "Tisti, ki se najbolj premikajo",
+ "Objetos": "Predmeti",
+ "Por valor": "Po vrednosti",
+ "Precios de {d}": "Cene za {d}",
+ "desde la última actualización": "od zadnje posodobitve",
+ "{a} de {b} actualizados. No pude con: {f}": "Posodobljenih {a} od {b}. Ni uspelo pri: {f}",
+ "{n} objetos actualizados": "Posodobljenih {n} predmetov"
 }

@@ -696,5 +696,18 @@
  "Que quede solo dentro de Inversiones": "Jotta se jää vain Sijoituksiin",
  "Solo la ganancia": "Vain voitto",
  "Solo si apuntaste la compra como gasto": "Vain jos kirjasit oston menoksi",
- "¿Qué apunto en Movimientos?": "Mitä kirjaan Tapahtumiin?"
+ "¿Qué apunto en Movimientos?": "Mitä kirjaan Tapahtumiin?",
+ "Actualizando {i}/{n}…": "Päivitetään {i}/{n}…",
+ "Actualizar precios": "Päivitä hinnat",
+ "Aún no cotiza nada": "Ei vielä noteerausta",
+ "Entra en una pieza de tus colecciones, dale al lápiz y elige de dónde sale su precio: oro o plata al peso, carta Pokémon o carta Magic. Las que tengan fuente real aparecerán aquí.": "Avaa kappale kokoelmistasi, napauta kynää ja valitse, mistä sen hinta tulee: kulta tai hopea painon mukaan, Pokémon-kortti tai Magic-kortti. Ne, joilla on aito lähde, näkyvät täällä.",
+ "Ir a Colecciones": "Siirry Kokoelmiin",
+ "LO QUE VALE TODO": "KAIKEN ARVO YHTEENSÄ",
+ "Los que más se mueven": "Eniten liikkuvat",
+ "Objetos": "Esineet",
+ "Por valor": "Arvon mukaan",
+ "Precios de {d}": "Hinnat {d}",
+ "desde la última actualización": "edellisestä päivityksestä",
+ "{a} de {b} actualizados. No pude con: {f}": "{a}/{b} päivitetty. Ei onnistunut: {f}",
+ "{n} objetos actualizados": "{n} esinettä päivitetty"
 }

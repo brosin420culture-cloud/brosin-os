@@ -696,5 +696,18 @@
  "Que quede solo dentro de Inversiones": "Biex jibqa' biss fl-Investimenti",
  "Solo la ganancia": "Il-qligħ biss",
  "Solo si apuntaste la compra como gasto": "Biss jekk irreġistrajt ix-xiri bħala nefqa",
- "¿Qué apunto en Movimientos?": "X'nirreġistra fit-Tranżazzjonijiet?"
+ "¿Qué apunto en Movimientos?": "X'nirreġistra fit-Tranżazzjonijiet?",
+ "Actualizando {i}/{n}…": "Aġġornament {i}/{n}…",
+ "Actualizar precios": "Aġġorna l-prezzijiet",
+ "Aún no cotiza nada": "Għad m'hemm l-ebda prezz",
+ "Entra en una pieza de tus colecciones, dale al lápiz y elige de dónde sale su precio: oro o plata al peso, carta Pokémon o carta Magic. Las que tengan fuente real aparecerán aquí.": "Idħol f'biċċa mill-kollezzjonijiet tiegħek, agħfas il-lapes u agħżel minn fejn ġej il-prezz tagħha: deheb jew fidda skont il-piż, karta Pokémon jew karta Magic. Dawk li għandhom sors reali jidhru hawn.",
+ "Ir a Colecciones": "Mur għal Kollezzjonijiet",
+ "LO QUE VALE TODO": "KEMM JISWA KOLLOX",
+ "Los que más se mueven": "Dawk li jiċċaqalqu l-aktar",
+ "Objetos": "Oġġetti",
+ "Por valor": "Skont il-valur",
+ "Precios de {d}": "Prezzijiet tal-{d}",
+ "desde la última actualización": "mill-aħħar aġġornament",
+ "{a} de {b} actualizados. No pude con: {f}": "{a} minn {b} aġġornati. Ma rnexxilix ma': {f}",
+ "{n} objetos actualizados": "{n} oġġetti aġġornati"
 }

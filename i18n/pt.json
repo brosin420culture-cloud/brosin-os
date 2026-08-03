@@ -696,5 +696,18 @@
  "Que quede solo dentro de Inversiones": "Que fique só dentro de Investimentos",
  "Solo la ganancia": "Só o ganho",
  "Solo si apuntaste la compra como gasto": "Só se apontaste a compra como despesa",
- "¿Qué apunto en Movimientos?": "O que aponto em Movimentos?"
+ "¿Qué apunto en Movimientos?": "O que aponto em Movimentos?",
+ "Actualizando {i}/{n}…": "A atualizar {i}/{n}…",
+ "Actualizar precios": "Atualizar preços",
+ "Aún no cotiza nada": "Ainda nada cotado",
+ "Entra en una pieza de tus colecciones, dale al lápiz y elige de dónde sale su precio: oro o plata al peso, carta Pokémon o carta Magic. Las que tengan fuente real aparecerán aquí.": "Entra numa peça das tuas coleções, toca no lápis e escolhe de onde vem o preço: ouro ou prata ao peso, carta Pokémon ou carta Magic. As que tiverem fonte real vão aparecer aqui.",
+ "Ir a Colecciones": "Ir para Coleções",
+ "LO QUE VALE TODO": "TUDO O QUE VALE",
+ "Los que más se mueven": "Os que mais mexem",
+ "Objetos": "Objetos",
+ "Por valor": "Por valor",
+ "Precios de {d}": "Preços de {d}",
+ "desde la última actualización": "desde a última atualização",
+ "{a} de {b} actualizados. No pude con: {f}": "{a} de {b} atualizados. Não consegui: {f}",
+ "{n} objetos actualizados": "{n} objetos atualizados"
 }

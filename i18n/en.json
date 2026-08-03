@@ -696,5 +696,18 @@
  "Que quede solo dentro de Inversiones": "Keep it within Investments only",
  "Solo la ganancia": "Only the gain",
  "Solo si apuntaste la compra como gasto": "Only if you logged the purchase as an expense",
- "¿Qué apunto en Movimientos?": "What do I log in Transactions?"
+ "¿Qué apunto en Movimientos?": "What do I log in Transactions?",
+ "Actualizando {i}/{n}…": "Updating {i}/{n}…",
+ "Actualizar precios": "Update prices",
+ "Aún no cotiza nada": "Nothing's quoted yet",
+ "Entra en una pieza de tus colecciones, dale al lápiz y elige de dónde sale su precio: oro o plata al peso, carta Pokémon o carta Magic. Las que tengan fuente real aparecerán aquí.": "Open a piece from your collections, tap the pencil, and choose where its price comes from: gold or silver by weight, a Pokémon card, or a Magic card. The ones with a real source will show up here.",
+ "Ir a Colecciones": "Go to Collections",
+ "LO QUE VALE TODO": "WHAT IT'S ALL WORTH",
+ "Los que más se mueven": "Biggest movers",
+ "Objetos": "Items",
+ "Por valor": "By value",
+ "Precios de {d}": "Prices as of {d}",
+ "desde la última actualización": "since the last update",
+ "{a} de {b} actualizados. No pude con: {f}": "{a} of {b} updated. Couldn't get: {f}",
+ "{n} objetos actualizados": "{n} items updated"
 }

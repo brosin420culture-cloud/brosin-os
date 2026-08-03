@@ -696,5 +696,18 @@
  "Que quede solo dentro de Inversiones": "Fanann sé laistigh d'Infheistíochtaí amháin",
  "Solo la ganancia": "An brabús amháin",
  "Solo si apuntaste la compra como gasto": "Ach amháin má thaifead tú an ceannach mar chaiteachas",
- "¿Qué apunto en Movimientos?": "Cad a thaifeadaim in Idirbhearta?"
+ "¿Qué apunto en Movimientos?": "Cad a thaifeadaim in Idirbhearta?",
+ "Actualizando {i}/{n}…": "Ag nuashonrú {i}/{n}…",
+ "Actualizar precios": "Nuashonraigh na praghsanna",
+ "Aún no cotiza nada": "Níl luach ar bith fós",
+ "Entra en una pieza de tus colecciones, dale al lápiz y elige de dónde sale su precio: oro o plata al peso, carta Pokémon o carta Magic. Las que tengan fuente real aparecerán aquí.": "Oscail píosa de do bhailiúcháin, buail ar an bpeann luaidhe agus roghnaigh cárb as a thagann a phraghas: ór nó airgead de réir meáchain, cárta Pokémon nó cárta Magic. Taispeánfar anseo iad siúd a bhfuil fíorfhoinse acu.",
+ "Ir a Colecciones": "Téigh go Bailiúcháin",
+ "LO QUE VALE TODO": "AN LUACH ATÁ AR GACH RUD",
+ "Los que más se mueven": "Na cinn is mó a bhogann",
+ "Objetos": "Rudaí",
+ "Por valor": "De réir luacha",
+ "Precios de {d}": "Praghsanna an {d}",
+ "desde la última actualización": "ó tharla an nuashonrú deireanach",
+ "{a} de {b} actualizados. No pude con: {f}": "{a} as {b} nuashonraithe. Níor éirigh liom le: {f}",
+ "{n} objetos actualizados": "{n} rud nuashonraithe"
 }

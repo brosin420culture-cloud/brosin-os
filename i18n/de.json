@@ -696,5 +696,18 @@
  "Que quede solo dentro de Inversiones": "Bleibt nur innerhalb von Investitionen",
  "Solo la ganancia": "Nur der Gewinn",
  "Solo si apuntaste la compra como gasto": "Nur wenn du den Kauf als Ausgabe eingetragen hast",
- "¿Qué apunto en Movimientos?": "Was trage ich bei Buchungen ein?"
+ "¿Qué apunto en Movimientos?": "Was trage ich bei Buchungen ein?",
+ "Actualizando {i}/{n}…": "Aktualisiere {i}/{n}…",
+ "Actualizar precios": "Preise aktualisieren",
+ "Aún no cotiza nada": "Noch nichts notiert",
+ "Entra en una pieza de tus colecciones, dale al lápiz y elige de dónde sale su precio: oro o plata al peso, carta Pokémon o carta Magic. Las que tengan fuente real aparecerán aquí.": "Öffne ein Stück aus deinen Sammlungen, tippe auf den Stift und wähle, woher der Preis stammt: Gold oder Silber nach Gewicht, eine Pokémon-Karte oder eine Magic-Karte. Die mit echter Quelle erscheinen hier.",
+ "Ir a Colecciones": "Zu Sammlungen",
+ "LO QUE VALE TODO": "WAS ALLES WERT IST",
+ "Los que más se mueven": "Die mit der größten Bewegung",
+ "Objetos": "Gegenstände",
+ "Por valor": "Nach Wert",
+ "Precios de {d}": "Preise vom {d}",
+ "desde la última actualización": "seit der letzten Aktualisierung",
+ "{a} de {b} actualizados. No pude con: {f}": "{a} von {b} aktualisiert. Nicht geschafft: {f}",
+ "{n} objetos actualizados": "{n} Gegenstände aktualisiert"
 }

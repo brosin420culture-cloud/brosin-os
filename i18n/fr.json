@@ -696,5 +696,18 @@
  "Que quede solo dentro de Inversiones": "Ça reste uniquement dans Investissements",
  "Solo la ganancia": "Seulement le gain",
  "Solo si apuntaste la compra como gasto": "Seulement si tu as noté l'achat comme dépense",
- "¿Qué apunto en Movimientos?": "Qu'est-ce que je note dans Opérations ?"
+ "¿Qué apunto en Movimientos?": "Qu'est-ce que je note dans Opérations ?",
+ "Actualizando {i}/{n}…": "Mise à jour {i}/{n}…",
+ "Actualizar precios": "Actualiser les prix",
+ "Aún no cotiza nada": "Rien n'est encore coté",
+ "Entra en una pieza de tus colecciones, dale al lápiz y elige de dónde sale su precio: oro o plata al peso, carta Pokémon o carta Magic. Las que tengan fuente real aparecerán aquí.": "Ouvre une pièce de tes collections, appuie sur le crayon et choisis d'où vient son prix : or ou argent au poids, carte Pokémon ou carte Magic. Celles qui ont une source réelle apparaîtront ici.",
+ "Ir a Colecciones": "Aller à Collections",
+ "LO QUE VALE TODO": "TOUT CE QUE ÇA VAUT",
+ "Los que más se mueven": "Ceux qui bougent le plus",
+ "Objetos": "Objets",
+ "Por valor": "Par valeur",
+ "Precios de {d}": "Prix du {d}",
+ "desde la última actualización": "depuis la dernière actualisation",
+ "{a} de {b} actualizados. No pude con: {f}": "{a} sur {b} actualisés. Échec pour : {f}",
+ "{n} objetos actualizados": "{n} objets actualisés"
 }

@@ -696,5 +696,18 @@
  "Que quede solo dentro de Inversiones": "Så det bara stannar inom Investeringar",
  "Solo la ganancia": "Bara vinsten",
  "Solo si apuntaste la compra como gasto": "Bara om du registrerade köpet som en utgift",
- "¿Qué apunto en Movimientos?": "Vad registrerar jag i Transaktioner?"
+ "¿Qué apunto en Movimientos?": "Vad registrerar jag i Transaktioner?",
+ "Actualizando {i}/{n}…": "Uppdaterar {i}/{n}…",
+ "Actualizar precios": "Uppdatera priser",
+ "Aún no cotiza nada": "Ingen kurs ännu",
+ "Entra en una pieza de tus colecciones, dale al lápiz y elige de dónde sale su precio: oro o plata al peso, carta Pokémon o carta Magic. Las que tengan fuente real aparecerán aquí.": "Öppna en sak ur dina samlingar, tryck på pennan och välj var priset kommer ifrån: guld eller silver efter vikt, ett Pokémon-kort eller ett Magic-kort. De med en verklig källa visas här.",
+ "Ir a Colecciones": "Gå till Samlingar",
+ "LO QUE VALE TODO": "VAD ALLTIHOP ÄR VÄRT",
+ "Los que más se mueven": "De som rör sig mest",
+ "Objetos": "Föremål",
+ "Por valor": "Efter värde",
+ "Precios de {d}": "Priser från {d}",
+ "desde la última actualización": "sedan senaste uppdateringen",
+ "{a} de {b} actualizados. No pude con: {f}": "{a} av {b} uppdaterade. Kunde inte med: {f}",
+ "{n} objetos actualizados": "{n} föremål uppdaterade"
 }

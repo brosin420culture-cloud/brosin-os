@@ -696,5 +696,18 @@
  "Que quede solo dentro de Inversiones": "Să rămână doar în Investiții",
  "Solo la ganancia": "Doar câștigul",
  "Solo si apuntaste la compra como gasto": "Doar dacă ai înregistrat cumpărarea ca cheltuială",
- "¿Qué apunto en Movimientos?": "Ce înregistrez în Tranzacții?"
+ "¿Qué apunto en Movimientos?": "Ce înregistrez în Tranzacții?",
+ "Actualizando {i}/{n}…": "Actualizare {i}/{n}…",
+ "Actualizar precios": "Actualizează prețurile",
+ "Aún no cotiza nada": "Încă nimic nu are cotație",
+ "Entra en una pieza de tus colecciones, dale al lápiz y elige de dónde sale su precio: oro o plata al peso, carta Pokémon o carta Magic. Las que tengan fuente real aparecerán aquí.": "Intră într-o piesă din colecțiile tale, apasă pe creion și alege de unde vine prețul ei: aur sau argint la greutate, carte Pokémon sau carte Magic. Cele cu sursă reală vor apărea aici.",
+ "Ir a Colecciones": "Mergi la Colecții",
+ "LO QUE VALE TODO": "CÂT VALOREAZĂ TOTUL",
+ "Los que más se mueven": "Cele care se mișcă cel mai mult",
+ "Objetos": "Obiecte",
+ "Por valor": "După valoare",
+ "Precios de {d}": "Prețuri din {d}",
+ "desde la última actualización": "de la ultima actualizare",
+ "{a} de {b} actualizados. No pude con: {f}": "{a} din {b} actualizate. N-am reușit cu: {f}",
+ "{n} objetos actualizados": "{n} obiecte actualizate"
 }

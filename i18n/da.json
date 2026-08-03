@@ -696,5 +696,18 @@
  "Que quede solo dentro de Inversiones": "Så det kun bliver i Investeringer",
  "Solo la ganancia": "Kun gevinsten",
  "Solo si apuntaste la compra como gasto": "Kun hvis du registrerede købet som en udgift",
- "¿Qué apunto en Movimientos?": "Hvad registrerer jeg i Transaktioner?"
+ "¿Qué apunto en Movimientos?": "Hvad registrerer jeg i Transaktioner?",
+ "Actualizando {i}/{n}…": "Opdaterer {i}/{n}…",
+ "Actualizar precios": "Opdater priser",
+ "Aún no cotiza nada": "Endnu ingen kurs",
+ "Entra en una pieza de tus colecciones, dale al lápiz y elige de dónde sale su precio: oro o plata al peso, carta Pokémon o carta Magic. Las que tengan fuente real aparecerán aquí.": "Åbn et stykke fra dine samlinger, tryk på blyanten, og vælg hvor prisen kommer fra: guld eller sølv efter vægt, et Pokémon-kort eller et Magic-kort. Dem med en rigtig kilde vises her.",
+ "Ir a Colecciones": "Gå til Samlinger",
+ "LO QUE VALE TODO": "HVAD DET HELE ER VÆRD",
+ "Los que más se mueven": "Dem der bevæger sig mest",
+ "Objetos": "Genstande",
+ "Por valor": "Efter værdi",
+ "Precios de {d}": "Priser fra {d}",
+ "desde la última actualización": "siden sidste opdatering",
+ "{a} de {b} actualizados. No pude con: {f}": "{a} af {b} opdateret. Kunne ikke klare: {f}",
+ "{n} objetos actualizados": "{n} genstande opdateret"
 }

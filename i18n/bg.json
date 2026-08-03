@@ -696,5 +696,18 @@
  "Que quede solo dentro de Inversiones": "Остава само в Инвестиции",
  "Solo la ganancia": "Само печалбата",
  "Solo si apuntaste la compra como gasto": "Само ако покупката е записана като разход",
- "¿Qué apunto en Movimientos?": "Какво записвам в Транзакциите?"
+ "¿Qué apunto en Movimientos?": "Какво записвам в Транзакциите?",
+ "Actualizando {i}/{n}…": "Обновяване {i}/{n}…",
+ "Actualizar precios": "Обнови цените",
+ "Aún no cotiza nada": "Още нищо не се котира",
+ "Entra en una pieza de tus colecciones, dale al lápiz y elige de dónde sale su precio: oro o plata al peso, carta Pokémon o carta Magic. Las que tengan fuente real aparecerán aquí.": "Отвори вещ от колекциите си, докосни молива и избери откъде идва цената ѝ: злато или сребро на тегло, карта Pokémon или карта Magic. Тези с реален източник ще се показват тук.",
+ "Ir a Colecciones": "Към Колекции",
+ "LO QUE VALE TODO": "КОЛКО СТРУВА ВСИЧКО",
+ "Los que más se mueven": "Тези, които се движат най-много",
+ "Objetos": "Предмети",
+ "Por valor": "По стойност",
+ "Precios de {d}": "Цени към {d}",
+ "desde la última actualización": "от последното обновяване",
+ "{a} de {b} actualizados. No pude con: {f}": "Обновени {a} от {b}. Не успях с: {f}",
+ "{n} objetos actualizados": "{n} обновени предмета"
 }

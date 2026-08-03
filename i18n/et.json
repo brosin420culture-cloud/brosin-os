@@ -696,5 +696,18 @@
  "Que quede solo dentro de Inversiones": "Et see jääks ainult Investeeringutesse",
  "Solo la ganancia": "Ainult kasum",
  "Solo si apuntaste la compra como gasto": "Ainult siis, kui märkisid ostu kuluna",
- "¿Qué apunto en Movimientos?": "Mida kirjendan Tehingutesse?"
+ "¿Qué apunto en Movimientos?": "Mida kirjendan Tehingutesse?",
+ "Actualizando {i}/{n}…": "Uuendamine {i}/{n}…",
+ "Actualizar precios": "Uuenda hinnad",
+ "Aún no cotiza nada": "Veel pole midagi noteeritud",
+ "Entra en una pieza de tus colecciones, dale al lápiz y elige de dónde sale su precio: oro o plata al peso, carta Pokémon o carta Magic. Las que tengan fuente real aparecerán aquí.": "Ava üks asi oma kogudest, puuduta pliiatsit ja vali, kust tuleb selle hind: kuld või hõbe kaalu järgi, Pokémon-kaart või Magic-kaart. Need, millel on tõeline allikas, ilmuvad siia.",
+ "Ir a Colecciones": "Mine Kogudesse",
+ "LO QUE VALE TODO": "KUI PALJU ON KÕIK KOKKU VÄÄRT",
+ "Los que más se mueven": "Enim liikuvad",
+ "Objetos": "Esemed",
+ "Por valor": "Väärtuse järgi",
+ "Precios de {d}": "Hinnad seisuga {d}",
+ "desde la última actualización": "alates viimasest uuendusest",
+ "{a} de {b} actualizados. No pude con: {f}": "Uuendatud {a}/{b}. Ei õnnestunud: {f}",
+ "{n} objetos actualizados": "{n} eset uuendatud"
 }

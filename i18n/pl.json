@@ -696,5 +696,18 @@
  "Que quede solo dentro de Inversiones": "Zostaje tylko w Inwestycjach",
  "Solo la ganancia": "Tylko zysk",
  "Solo si apuntaste la compra como gasto": "Tylko jeśli zakup był zapisany jako wydatek",
- "¿Qué apunto en Movimientos?": "Co zapisuję w Transakcjach?"
+ "¿Qué apunto en Movimientos?": "Co zapisuję w Transakcjach?",
+ "Actualizando {i}/{n}…": "Aktualizowanie {i}/{n}…",
+ "Actualizar precios": "Zaktualizuj ceny",
+ "Aún no cotiza nada": "Na razie nic nie ma wyceny",
+ "Entra en una pieza de tus colecciones, dale al lápiz y elige de dónde sale su precio: oro o plata al peso, carta Pokémon o carta Magic. Las que tengan fuente real aparecerán aquí.": "Wejdź w element swoich kolekcji, stuknij w ołówek i wybierz, skąd pochodzi jego cena: złoto lub srebro na wagę, karta Pokémon lub karta Magic. Te z prawdziwym źródłem pojawią się tutaj.",
+ "Ir a Colecciones": "Przejdź do Kolekcji",
+ "LO QUE VALE TODO": "WARTOŚĆ WSZYSTKIEGO",
+ "Los que más se mueven": "Najbardziej ruchome",
+ "Objetos": "Przedmioty",
+ "Por valor": "Według wartości",
+ "Precios de {d}": "Ceny z {d}",
+ "desde la última actualización": "od ostatniej aktualizacji",
+ "{a} de {b} actualizados. No pude con: {f}": "Zaktualizowano {a} z {b}. Nie udało się: {f}",
+ "{n} objetos actualizados": "Zaktualizowano {n} przedmiotów"
 }

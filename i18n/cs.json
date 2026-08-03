@@ -696,5 +696,18 @@
  "Que quede solo dentro de Inversiones": "Zůstává to jen v Investicích",
  "Solo la ganancia": "Jen zisk",
  "Solo si apuntaste la compra como gasto": "Jen pokud byl nákup zapsán jako výdaj",
- "¿Qué apunto en Movimientos?": "Co zapisuji do Pohybů?"
+ "¿Qué apunto en Movimientos?": "Co zapisuji do Pohybů?",
+ "Actualizando {i}/{n}…": "Aktualizace {i}/{n}…",
+ "Actualizar precios": "Aktualizovat ceny",
+ "Aún no cotiza nada": "Zatím se nic neobchoduje",
+ "Entra en una pieza de tus colecciones, dale al lápiz y elige de dónde sale su precio: oro o plata al peso, carta Pokémon o carta Magic. Las que tengan fuente real aparecerán aquí.": "Otevři kousek ze svých sbírek, klepni na tužku a vyber, odkud se bere jeho cena: zlato nebo stříbro na váhu, karta Pokémon nebo karta Magic. Ty se skutečným zdrojem se zobrazí tady.",
+ "Ir a Colecciones": "Přejít na Sbírky",
+ "LO QUE VALE TODO": "HODNOTA VŠEHO",
+ "Los que más se mueven": "Nejvíc se hýbou",
+ "Objetos": "Předměty",
+ "Por valor": "Podle hodnoty",
+ "Precios de {d}": "Ceny z {d}",
+ "desde la última actualización": "od poslední aktualizace",
+ "{a} de {b} actualizados. No pude con: {f}": "Aktualizováno {a} z {b}. Nepovedlo se: {f}",
+ "{n} objetos actualizados": "Aktualizováno {n} předmětů"
 }
