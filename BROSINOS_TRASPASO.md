@@ -337,36 +337,48 @@ El fichero `test_v31.js` (78 comprobaciones, todas en verde) cubre: forma y requ
 | v30 | `8257eae` | **Temas desbloqueables por racha** (+ separación `mode`/`base`) |
 | v31 | `eb42019` | Fase 4 de idiomas: helper `tri()` + 208 claves nuevas envueltas |
 | v32 | `b226bc4` + `6237dfc` | 25 idiomas completos: 595 claves en los 25 diccionarios |
-| **v33** | **`8500945`** | **10 arreglos de Kevin + Fijos, huchas compartidas y Retos con amigos** ← actual |
+| v33 | `8500945` | 10 arreglos de Kevin + Fijos, huchas compartidas y Retos con amigos |
+| v34 | `a39d2cb` | **Arreglada la pérdida de datos**: sello savedAt, la nube ya no pisa a ciegas, guardado al cerrar |
+| v35 | `8c821d3` | Apilado dinámico de paneles, editar piezas, día en deudas, Vistazo al abrir |
+| v36 | `b60c61d` | Vender inversiones con ingreso real en Movimientos; historial de sueño completo |
+| v37 | `516f711` | Precio real en Colecciones: oro/plata al peso y cartas Pokémon/Magic |
+| v38 | `5ce1c2f` | **Fusión real de sincronización** con marcas de borrado |
+| **v39** | **`2d599c0` + `74cc81e`** | **Los 25 idiomas al día: 690 claves, I18N_VER = 39** ← actual |
 
 ---
 
 ## PARTE 9 · TRABAJO PENDIENTE
 
-### ✅ HECHA — v33: los 10 arreglos de Kevin + retos con amigos (30/07/2026)
-Commit `8500945`. Entró todo esto: fecha de alta (`createdAt`) puesta **en el reducer** para que la
-herede todo lo que se cree; el chat por encima de los avisos (z-index 95 contra 90); teclado de
-iPhone con el nuevo hook `useKeyboardInset` (`visualViewport`); pasos de objetivo con día propio;
-tasador propio de coleccionables (`aiEstimateCollectible`) con error visible; botón "Actualizar la
-app" en Perfil; 7 tipos de evento nuevos; los cumpleaños de `people` ya salen en la Agenda como
-eventos virtuales; pestaña **Fijos** en Dinero; huchas de ahorro compartidas; beneficios por
-periodo (semana/mes/trimestre/semestre/año) en inversiones compartidas; y pestaña **Retos**, que
-es la #8 de la hoja de ruta.
+### ✅ HECHAS — de la v33 a la v39 (30/07 y 03/08 de 2026)
+Resumen corto, el detalle está en cada commit:
 
-Colecciones nuevas en el estado: `fixeds` y `challenges`. Ojo: `hydrate` ahora rellena cualquier
-colección que falte, así que los datos guardados de versiones viejas no rompen la app.
+- **v33** — los 10 arreglos que pidió Kevin más los Retos con amigos (#8 de la hoja de ruta).
+- **v34** — *pérdida de datos*. `cloudLoad` volcaba la nube encima de lo local sin mirar fechas.
+  Ahora cada guardado lleva `savedAt`, hay flush en `pagehide`/`visibilitychange` y los fallos
+  de cuota de `localStorage` se ven en vez de tragarse.
+- **v35** — `useTopZ`: el apilado de paneles es dinámico, manda el último que se abre. Con
+  números fijos no había arreglo posible. Además: editar piezas, día en deudas, Vistazo al abrir.
+- **v36** — vender inversiones (el cobro entra como ingreso real en Movimientos, separando
+  "sin vender" de "ya ganado") e historial de sueño completo, no solo 7 días.
+- **v37** — precio real en Colecciones. Ver PARTE 11.
+- **v38** — *fusión real de sincronización*: `updatedAt` por item, marcas de borrado en
+  `state._tomb` y `fusionarEstados`. Dos dispositivos ya no se pisan.
+- **v39** — los 25 idiomas al día: 690 claves cada uno, `I18N_VER = 39`.
 
-*Cómo se compiló sin Node (plan B que funciona):* el ordenador de Kevin no tenía shell. Se
-transpiló `BrosinOS.jsx` con `typescript@5.6.3` importado desde esm.sh **dentro de una pestaña de
-Chrome**, con las mismas opciones que `build_pwa.js`, y se comprobó que la salida es byte a byte
-idéntica a la de Node antes de fiarse. Luego solo se sustituye el bloque `<script type="module">`
-del `index.html` publicado y se suben los tres números de versión a mano.
+### 🔴 REGLA NUEVA — traducir en la misma versión, no después
+Kevin lo pidió expresamente el 03/08/2026: **cada versión que añada texto visible se publica ya
+con sus 25 idiomas**. Dejarlo para luego fue justo lo que creó una deuda de 96 claves.
 
-### 🔴 TAREA INMEDIATA — traducir los textos de la v33
-Los textos nuevos van envueltos en `tr()` / `tri()` pero **no están en los 25 diccionarios**, así que
-en cualquier idioma que no sea español se ven en español (no rompe nada, pero canta). Hay que sacar
-las claves nuevas, añadirlas a los 25 ficheros de `i18n/` y subir `I18N_VER` a 33. Mismo
-procedimiento que en la v32.
+Receta que funciona (probada en la v39):
+1. Sacar las claves nuevas: regex `\btri?\(\s*"..."` sobre el JSX y restar las que ya están en
+   `i18n/en.json`. **Ojo:** los textos que se traducen dinámicamente (`tr(f.l)` sobre una tabla
+   de etiquetas, como `FUENTES_PRECIO` o `LEYES`) NO los ve el regex; hay que añadirlos a mano.
+2. Repartir los 25 idiomas entre varios subagentes que escriban un JSON por idioma **a disco**,
+   no por el chat: así las traducciones no pasan por el contexto.
+3. Fusionar con el diccionario existente y **validar antes de subir**, abortando si falla:
+   mismo juego de claves en los 25, ninguna vacía, y los huecos `{n}` `{d}` `{i}` `{g}` `{p}` `{r}`
+   idénticos entre la clave española y su traducción (un hueco perdido pinta texto roto).
+4. Subir `I18N_VER` al número de la versión, que es lo que rompe la caché de idiomas del móvil.
 
 ### 🟡 Aparcado por Kevin
 Probar las notificaciones push reales en el móvil con el "médico de avisos" (`PushDoctor` en Perfil). Cita: *"deja el medico de avisos ya lo probaremos mas tarde"*.
@@ -406,6 +418,6 @@ Sí son públicas y ya están incrustadas en `build_pwa.js` (es correcto y segur
 - Scripts en ficheros, nunca `node -e` con comillas raras. Mensajes de commit con `-F fichero`.
 - Kevin no toca nada. Tú lo haces todo y se lo cuentas en dos frases.
 
-**Siguiente cosa que hacer: traducir a los 25 idiomas los textos nuevos de la v33 y subir `I18N_VER` a 33.**
+**Siguiente cosa que hacer: lo que pida Kevin. No hay deuda pendiente.**
 
 *Bro, no te quedes sin.*
