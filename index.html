@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
 <title>Brosin OS</title>
 <meta name="description" content="Tu segundo cerebro. Bro, no te quedes sin." />
-<meta name="brosin-build" content="v37" />
+<meta name="brosin-build" content="v38" />
 <meta name="theme-color" content="#0a0a0a" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
@@ -59,7 +59,7 @@
 <div id="root">
   <div id="splash">
     <img class="bl" src="./brosin_eye.png" alt="Brosin" />
-    <div class="s">Despertando la colmena… · v37</div>
+    <div class="s">Despertando la colmena… · v38</div>
     <div class="l"></div>
   </div>
 </div>
@@ -1339,7 +1339,86 @@ const EMPTY = {
     teamProjects: [],
     fixeds: [],
     challenges: [],
+    // Marcas de borrado: { coleccion: { id: fechaISO } }. Sin esto, al fusionar
+    // dos dispositivos lo borrado en uno "revive" desde el otro.
+    _tomb: {},
 };
+/* ============================================================
+   FUSIÓN DE DOS ESTADOS (este móvil + la nube)
+   La v34 evitó que la nube pisara lo local eligiendo la copia más nueva,
+   pero elegir una copia ENTERA sigue perdiendo lo que hiciste en el otro
+   sitio. Esto fusiona pieza a pieza: gana la versión más reciente de cada
+   cosa, y un borrado gana si es posterior a esa versión.
+   ============================================================ */
+const CLAVE_DE_COL = { sleepLog: "date" };
+const SIN_FUSION = ["chat"]; // sin id estable: se queda la copia más nueva
+function _fechaDe(it, porDefecto) {
+    const t = Date.parse((it && (it.updatedAt || it.createdAt)) || "");
+    return isNaN(t) ? (porDefecto || 0) : t;
+}
+function fusionarLista(col, a, b, aAt, bAt, tumbas) {
+    const clave = CLAVE_DE_COL[col] || "id";
+    const mapa = new Map();
+    const meter = (arr, cuando) => (arr || []).forEach((it) => {
+        const k = it && it[clave];
+        if (k == null)
+            return;
+        const t = _fechaDe(it, cuando);
+        const prev = mapa.get(k);
+        if (!prev || t >= prev.t)
+            mapa.set(k, { it, t });
+    });
+    meter(a, aAt);
+    meter(b, bAt);
+    const out = [];
+    mapa.forEach((v, k) => {
+        const borradoEn = tumbas && tumbas[k] ? Date.parse(tumbas[k]) : NaN;
+        if (!isNaN(borradoEn) && borradoEn >= v.t)
+            return; // el borrado es posterior: sigue borrado
+        out.push(v.it);
+    });
+    return out;
+}
+function fusionarTumbas(a, b) {
+    const out = {};
+    [a || {}, b || {}].forEach((src) => {
+        Object.keys(src).forEach((col) => {
+            out[col] = out[col] || {};
+            Object.keys(src[col] || {}).forEach((id) => {
+                const prev = Date.parse(out[col][id] || "");
+                const nuevo = Date.parse(src[col][id] || "");
+                if (isNaN(prev) || (!isNaN(nuevo) && nuevo > prev))
+                    out[col][id] = src[col][id];
+            });
+        });
+    });
+    // podar: pasados 120 días una marca de borrado ya no aporta y solo ocupa
+    const limite = Date.now() - 120 * 24 * 3600 * 1000;
+    Object.keys(out).forEach((col) => {
+        Object.keys(out[col]).forEach((id) => { const t = Date.parse(out[col][id]); if (!isNaN(t) && t < limite)
+            delete out[col][id]; });
+    });
+    return out;
+}
+function fusionarEstados(local, nube) {
+    const lAt = Date.parse((local && local.savedAt) || "") || 0;
+    const nAt = Date.parse((nube && nube.savedAt) || "") || 0;
+    const nubeGana = nAt > lAt;
+    const base = nubeGana ? nube : local; // para lo que no se puede fusionar
+    const otro = nubeGana ? local : nube;
+    const tumbas = fusionarTumbas(local && local._tomb, nube && nube._tomb);
+    const out = { ...otro, ...base, _tomb: tumbas };
+    Object.keys(EMPTY).forEach((col) => {
+        if (!Array.isArray(EMPTY[col]))
+            return;
+        if (SIN_FUSION.indexOf(col) > -1) {
+            out[col] = Array.isArray(base[col]) ? base[col] : [];
+            return;
+        }
+        out[col] = fusionarLista(col, local && local[col], nube && nube[col], lAt, nAt, tumbas[col]);
+    });
+    return out;
+}
 function reducer(state, a) {
     switch (a.type) {
         case "hydrate": {
@@ -1358,18 +1437,39 @@ function reducer(state, a) {
         case "add": {
             // Sello de alta para TODO lo que se crea (deudas, objetivos, huchas, colecciones…).
             // Se pone aquí y no en cada pantalla para que no se olvide en ningún sitio.
-            const item = a.item && a.item.createdAt ? a.item : { ...a.item, createdAt: nowISO() };
+            const ahora = nowISO();
+            const item = { ...a.item, createdAt: (a.item && a.item.createdAt) || ahora, updatedAt: ahora };
             return { ...state, [a.col]: [item, ...(state[a.col] || [])] };
         }
         case "update":
+            // updatedAt en cada cambio: es lo que decide quién gana al fusionar
             return {
                 ...state,
-                [a.col]: (state[a.col] || []).map((x) => (x.id === a.id ? { ...x, ...a.patch } : x)),
+                [a.col]: (state[a.col] || []).map((x) => (x.id === a.id ? { ...x, ...a.patch, updatedAt: nowISO() } : x)),
             };
-        case "remove":
-            return { ...state, [a.col]: (state[a.col] || []).filter((x) => x.id !== a.id) };
-        case "setCol":
-            return { ...state, [a.col]: a.items };
+        case "remove": {
+            // Dejar marca de borrado para que no reviva desde el otro dispositivo
+            const tomb = { ...(state._tomb || {}) };
+            tomb[a.col] = { ...(tomb[a.col] || {}), [a.id]: nowISO() };
+            return { ...state, _tomb: tomb, [a.col]: (state[a.col] || []).filter((x) => x.id !== a.id) };
+        }
+        case "setCol": {
+            const ahora2 = nowISO();
+            const clave = CLAVE_DE_COL[a.col] || "id";
+            const antes = state[a.col] || [];
+            const items = (a.items || []).map((x) => (x && typeof x === "object" && !x.updatedAt ? { ...x, updatedAt: ahora2 } : x));
+            const vivos = new Set(items.map((x) => x && x[clave]).filter((k) => k != null));
+            const tomb2 = { ...(state._tomb || {}) };
+            const delCol = { ...(tomb2[a.col] || {}) };
+            let hubo = false;
+            antes.forEach((x) => { const k = x && x[clave]; if (k != null && !vivos.has(k)) {
+                delCol[k] = ahora2;
+                hubo = true;
+            } });
+            if (hubo)
+                tomb2[a.col] = delCol;
+            return { ...state, _tomb: hubo ? tomb2 : state._tomb, [a.col]: items };
+        }
         case "drive":
             return { ...state, drive: { ...state.drive, ...a.payload } };
         default:
@@ -6957,21 +7057,19 @@ function BrosinOS() {
                 return;
             const cloudData = await cloudLoad(sb, cloudUser.id);
             const nubeTieneAlgo = !!(cloudData && (cloudData.profile || cloudData.events));
-            const ms = (x) => { const t = Date.parse(x || ""); return isNaN(t) ? null : t; };
-            const cA = ms(cloudData && cloudData.savedAt);
-            const lA = ms(localSavedAt.current);
-            const s = stateRef.current || {};
-            const localVacio = !(s.profile && s.profile.created) && !(s.tx || []).length && !(s.events || []).length;
-            // REGLA: la nube solo pisa lo de este móvil si el móvil está vacío o si la copia
-            // de la nube es MÁS NUEVA. Antes pisaba siempre y sin mirar la fecha: por eso se
-            // perdían movimientos apuntados y reaparecían cosas ya borradas.
-            const traerNube = nubeTieneAlgo && (localVacio || (cA != null && (lA == null || cA > lA)));
-            if (traerNube) {
+            if (nubeTieneAlgo) {
+                // FUSIÓN, no elegir una copia entera: se queda la versión más nueva de cada
+                // cosa y los borrados mandan sobre versiones anteriores. Así lo apuntado en
+                // este móvil y lo apuntado en otro conviven en vez de pisarse.
+                const { ready, ...persistLocal } = stateRef.current;
+                const fusion = fusionarEstados({ ...persistLocal, savedAt: localSavedAt.current || null }, cloudData);
                 cloudSkip.current = true;
-                const { savedAt, ...rest } = cloudData;
-                localSavedAt.current = savedAt || null;
+                const { savedAt, ...rest } = fusion;
                 dispatch({ type: "hydrate", payload: { ...EMPTY, ...rest, ready: true } });
-                setCloudMsg({ ok: true, t: "Datos traídos de la nube ✓" });
+                const sellada = stamp(rest);
+                localSavedAt.current = sellada.savedAt;
+                const subido = await cloudSave(sb, cloudUser.id, sellada);
+                setCloudMsg(subido ? { ok: true, t: "Sincronizado ✓" } : { ok: false, t: "Fusionado en el móvil, pero no pude subirlo." });
             }
             else {
                 const { ready, ...persist } = stateRef.current;
