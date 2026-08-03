@@ -688,5 +688,13 @@
  "¿De dónde sale el precio?": "Odkiaľ sa berie cena?",
  "¿Entra o sale?": "Prichádza, alebo odchádza?",
  "¿Por cuánto la vendes? (€)": "Za koľko ju predávaš? (€)",
- "¿Qué reto?": "Aká výzva?"
+ "¿Qué reto?": "Aká výzva?",
+ "El cobro entero": "Celá suma",
+ "Hábitos de hoy": "Dnešné návyky",
+ "La compra no estaba apuntada como gasto": "Nákup nebol zapísaný ako výdavok",
+ "Nada": "Nič",
+ "Que quede solo dentro de Inversiones": "Zostáva to len v Investíciách",
+ "Solo la ganancia": "Len zisk",
+ "Solo si apuntaste la compra como gasto": "Len ak bol nákup zapísaný ako výdavok",
+ "¿Qué apunto en Movimientos?": "Čo zapisujem do Pohybov?"
 }

@@ -688,5 +688,13 @@
  "¿De dónde sale el precio?": "No kurienes nāk cena?",
  "¿Entra o sale?": "Ienāk vai iziet?",
  "¿Por cuánto la vendes? (€)": "Par cik to pārdod? (€)",
- "¿Qué reto?": "Kāds izaicinājums?"
+ "¿Qué reto?": "Kāds izaicinājums?",
+ "El cobro entero": "Visa saņemtā summa",
+ "Hábitos de hoy": "Šodienas ieradumi",
+ "La compra no estaba apuntada como gasto": "Pirkums nebija reģistrēts kā izdevums",
+ "Nada": "Nekas",
+ "Que quede solo dentro de Inversiones": "Lai tas paliek tikai Ieguldījumos",
+ "Solo la ganancia": "Tikai peļņa",
+ "Solo si apuntaste la compra como gasto": "Tikai, ja pirkumu reģistrēji kā izdevumu",
+ "¿Qué apunto en Movimientos?": "Ko es reģistrēju Darījumos?"
 }

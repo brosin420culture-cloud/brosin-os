@@ -688,5 +688,13 @@
  "¿De dónde sale el precio?": "Skąd bierze się cena?",
  "¿Entra o sale?": "Przychodzi czy wychodzi?",
  "¿Por cuánto la vendes? (€)": "Za ile ją sprzedajesz? (€)",
- "¿Qué reto?": "Jakie wyzwanie?"
+ "¿Qué reto?": "Jakie wyzwanie?",
+ "El cobro entero": "Cała kwota",
+ "Hábitos de hoy": "Dzisiejsze nawyki",
+ "La compra no estaba apuntada como gasto": "Zakup nie był zapisany jako wydatek",
+ "Nada": "Nic",
+ "Que quede solo dentro de Inversiones": "Zostaje tylko w Inwestycjach",
+ "Solo la ganancia": "Tylko zysk",
+ "Solo si apuntaste la compra como gasto": "Tylko jeśli zakup był zapisany jako wydatek",
+ "¿Qué apunto en Movimientos?": "Co zapisuję w Transakcjach?"
 }

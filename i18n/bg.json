@@ -688,5 +688,13 @@
  "¿De dónde sale el precio?": "Откъде идва цената?",
  "¿Entra o sale?": "Влиза или излиза?",
  "¿Por cuánto la vendes? (€)": "За колко я продаваш? (€)",
- "¿Qué reto?": "Какво предизвикателство?"
+ "¿Qué reto?": "Какво предизвикателство?",
+ "El cobro entero": "Цялата сума",
+ "Hábitos de hoy": "Днешни навици",
+ "La compra no estaba apuntada como gasto": "Покупката не беше записана като разход",
+ "Nada": "Нищо",
+ "Que quede solo dentro de Inversiones": "Остава само в Инвестиции",
+ "Solo la ganancia": "Само печалбата",
+ "Solo si apuntaste la compra como gasto": "Само ако покупката е записана като разход",
+ "¿Qué apunto en Movimientos?": "Какво записвам в Транзакциите?"
 }

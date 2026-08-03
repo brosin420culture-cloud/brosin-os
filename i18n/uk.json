@@ -688,5 +688,13 @@
  "¿De dónde sale el precio?": "Звідки береться ціна?",
  "¿Entra o sale?": "Надходить чи виходить?",
  "¿Por cuánto la vendes? (€)": "За скільки ти її продаєш? (€)",
- "¿Qué reto?": "Який виклик?"
+ "¿Qué reto?": "Який виклик?",
+ "El cobro entero": "Увесь платіж",
+ "Hábitos de hoy": "Сьогоднішні звички",
+ "La compra no estaba apuntada como gasto": "Покупку не було записано як витрату",
+ "Nada": "Нічого",
+ "Que quede solo dentro de Inversiones": "Щоб це залишилося тільки в Інвестиціях",
+ "Solo la ganancia": "Тільки прибуток",
+ "Solo si apuntaste la compra como gasto": "Тільки якщо покупку було записано як витрату",
+ "¿Qué apunto en Movimientos?": "Що я записую в Транзакціях?"
 }

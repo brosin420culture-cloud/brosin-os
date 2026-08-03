@@ -688,5 +688,13 @@
  "¿De dónde sale el precio?": "Mistä hinta tulee?",
  "¿Entra o sale?": "Sisään vai ulos?",
  "¿Por cuánto la vendes? (€)": "Millä hinnalla myyt sen? (€)",
- "¿Qué reto?": "Mikä haaste?"
+ "¿Qué reto?": "Mikä haaste?",
+ "El cobro entero": "Koko summa",
+ "Hábitos de hoy": "Tämän päivän tavat",
+ "La compra no estaba apuntada como gasto": "Ostoa ei ollut kirjattu menoksi",
+ "Nada": "Ei mitään",
+ "Que quede solo dentro de Inversiones": "Jotta se jää vain Sijoituksiin",
+ "Solo la ganancia": "Vain voitto",
+ "Solo si apuntaste la compra como gasto": "Vain jos kirjasit oston menoksi",
+ "¿Qué apunto en Movimientos?": "Mitä kirjaan Tapahtumiin?"
 }

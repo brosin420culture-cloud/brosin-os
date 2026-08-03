@@ -688,5 +688,13 @@
  "¿De dónde sale el precio?": "Where does the price come from?",
  "¿Entra o sale?": "In or out?",
  "¿Por cuánto la vendes? (€)": "How much are you selling it for? (€)",
- "¿Qué reto?": "Which challenge?"
+ "¿Qué reto?": "Which challenge?",
+ "El cobro entero": "The full amount",
+ "Hábitos de hoy": "Today's habits",
+ "La compra no estaba apuntada como gasto": "The purchase wasn't logged as an expense",
+ "Nada": "Nothing",
+ "Que quede solo dentro de Inversiones": "Keep it within Investments only",
+ "Solo la ganancia": "Only the gain",
+ "Solo si apuntaste la compra como gasto": "Only if you logged the purchase as an expense",
+ "¿Qué apunto en Movimientos?": "What do I log in Transactions?"
 }

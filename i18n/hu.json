@@ -688,5 +688,13 @@
  "¿De dónde sale el precio?": "Honnan származik az ár?",
  "¿Entra o sale?": "Bejövő vagy kimenő?",
  "¿Por cuánto la vendes? (€)": "Mennyiért adod el? (€)",
- "¿Qué reto?": "Milyen kihívás?"
+ "¿Qué reto?": "Milyen kihívás?",
+ "El cobro entero": "A teljes összeg",
+ "Hábitos de hoy": "Mai szokások",
+ "La compra no estaba apuntada como gasto": "A vásárlás nem volt kiadásként feljegyezve",
+ "Nada": "Semmi",
+ "Que quede solo dentro de Inversiones": "Csak a Befektetéseken belül marad",
+ "Solo la ganancia": "Csak a nyereség",
+ "Solo si apuntaste la compra como gasto": "Csak akkor, ha kiadásként feljegyezted a vásárlást",
+ "¿Qué apunto en Movimientos?": "Mit jegyezzek fel a Tranzakciókban?"
 }

@@ -688,5 +688,13 @@
  "¿De dónde sale el precio?": "Kust hind tuleb?",
  "¿Entra o sale?": "Sisse või välja?",
  "¿Por cuánto la vendes? (€)": "Mis hinnaga sa selle müüd? (€)",
- "¿Qué reto?": "Milline väljakutse?"
+ "¿Qué reto?": "Milline väljakutse?",
+ "El cobro entero": "Kogu summa",
+ "Hábitos de hoy": "Tänased harjumused",
+ "La compra no estaba apuntada como gasto": "Ostu ei olnud kirjendatud kuluna",
+ "Nada": "Mitte midagi",
+ "Que quede solo dentro de Inversiones": "Et see jääks ainult Investeeringutesse",
+ "Solo la ganancia": "Ainult kasum",
+ "Solo si apuntaste la compra como gasto": "Ainult siis, kui märkisid ostu kuluna",
+ "¿Qué apunto en Movimientos?": "Mida kirjendan Tehingutesse?"
 }

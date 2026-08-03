@@ -688,5 +688,13 @@
  "¿De dónde sale el precio?": "Cad as a dtagann an praghas?",
  "¿Entra o sale?": "Isteach nó amach?",
  "¿Por cuánto la vendes? (€)": "Ar cé mhéad atá tú á dhíol? (€)",
- "¿Qué reto?": "Cén dúshlán?"
+ "¿Qué reto?": "Cén dúshlán?",
+ "El cobro entero": "An íocaíocht iomlán",
+ "Hábitos de hoy": "Nósanna an lae inniu",
+ "La compra no estaba apuntada como gasto": "Ní raibh an ceannach taifeadta mar chaiteachas",
+ "Nada": "Faic",
+ "Que quede solo dentro de Inversiones": "Fanann sé laistigh d'Infheistíochtaí amháin",
+ "Solo la ganancia": "An brabús amháin",
+ "Solo si apuntaste la compra como gasto": "Ach amháin má thaifead tú an ceannach mar chaiteachas",
+ "¿Qué apunto en Movimientos?": "Cad a thaifeadaim in Idirbhearta?"
 }
