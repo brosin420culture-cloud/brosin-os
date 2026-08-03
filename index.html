@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
 <title>Brosin OS</title>
 <meta name="description" content="Tu segundo cerebro. Bro, no te quedes sin." />
-<meta name="brosin-build" content="v36" />
+<meta name="brosin-build" content="v37" />
 <meta name="theme-color" content="#0a0a0a" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
@@ -59,7 +59,7 @@
 <div id="root">
   <div id="splash">
     <img class="bl" src="./brosin_eye.png" alt="Brosin" />
-    <div class="s">Despertando la colmena… · v36</div>
+    <div class="s">Despertando la colmena… · v37</div>
     <div class="l"></div>
   </div>
 </div>
@@ -1128,6 +1128,106 @@ async function aiEstimateCollectible(name, note) {
     if (isFinite(n) && n > 0)
         return { precio: n, confianza: "baja" };
     return null;
+}
+/* ============================================================
+   PRECIO REAL DE OBJETOS — todo desde el navegador, sin claves.
+   Las tres fuentes permiten CORS (comprobado), así que no hace falta
+   ni GitHub Action ni fichero de precios ni función intermedia.
+   ============================================================ */
+const OZ_EN_GRAMOS = 31.1034768;
+const LEYES = [
+    { k: 0.999, l: "999 (puro)" },
+    { k: 0.916, l: "22k" },
+    { k: 0.75, l: "18k" },
+    { k: 0.585, l: "14k" },
+    { k: 0.375, l: "9k" },
+];
+const FUENTES_PRECIO = [
+    { k: "", l: "Manual" },
+    { k: "metal", l: "Oro / plata al peso" },
+    { k: "pokemon", l: "Carta Pokémon" },
+    { k: "mtg", l: "Carta Magic" },
+    { k: "ia", l: "Estimación con IA" },
+];
+/* pokemontcg.io suelta 500 de vez en cuando con el mismo id que luego funciona.
+   Sin reintento, el precio "falla" por nada. */
+async function fetchReintento(url, opts, intentos = 3) {
+    let ultimo = null;
+    for (let i = 0; i < intentos; i++) {
+        try {
+            const r = await fetch(url, opts);
+            if (r.ok || r.status === 404)
+                return r; // el 404 no mejora reintentando
+            ultimo = new Error("HTTP " + r.status);
+        }
+        catch (e) {
+            ultimo = e;
+        }
+        await new Promise((res) => setTimeout(res, 400 * (i + 1)));
+    }
+    throw ultimo || new Error("net");
+}
+async function precioPokemon(ref) {
+    const id = ref && ref.cardId;
+    if (!id)
+        throw new Error("Falta el id de la carta (p. ej. base1-4)");
+    const r = await fetchReintento(`https://api.pokemontcg.io/v2/cards/${encodeURIComponent(id)}`, { headers: { Accept: "application/json" } });
+    if (!r.ok)
+        throw new Error(r.status === 404 ? "No existe esa carta" : "No responde pokemontcg.io");
+    const j = await r.json();
+    const cm = j && j.data && j.data.cardmarket && j.data.cardmarket.prices;
+    const p = cm && (cm.trendPrice || cm.averageSellPrice || cm.avg30);
+    if (p)
+        return { value: Math.round(p * 100) / 100, fuente: "Cardmarket" };
+    throw new Error("Esa carta no tiene precio publicado");
+}
+async function precioMagic(ref) {
+    const name = ref && ref.name;
+    if (!name)
+        throw new Error("Falta el nombre exacto de la carta");
+    const u = new URL("https://api.scryfall.com/cards/named");
+    u.searchParams.set("exact", name);
+    if (ref.set)
+        u.searchParams.set("set", ref.set);
+    const r = await fetchReintento(u, { headers: { Accept: "application/json" } });
+    if (!r.ok)
+        throw new Error(r.status === 404 ? "No encuentro esa carta" : "No responde Scryfall");
+    const d = await r.json();
+    const p = d && d.prices && d.prices.eur;
+    if (p)
+        return { value: Math.round(parseFloat(p) * 100) / 100, fuente: "Cardmarket" };
+    throw new Error("Esa carta no tiene precio en euros");
+}
+async function precioMetal(ref) {
+    const sym = (ref && ref.metal) || "XAU";
+    const g = Number((ref && ref.grams) || 0);
+    const ley = Number(ref && ref.purity != null ? ref.purity : 0.999);
+    if (!g)
+        throw new Error("Pon cuántos gramos tienes");
+    const rates = await fetchForex();
+    const eurusd = rates && rates.USD ? rates.USD : null;
+    if (!eurusd)
+        throw new Error("No pude traer el cambio EUR/USD");
+    const usdOz = await fetchMetalUsd(sym);
+    if (!usdOz)
+        throw new Error("No pude traer el precio del metal");
+    const eurGramo = (usdOz / eurusd) / OZ_EN_GRAMOS;
+    return { value: Math.round(eurGramo * g * ley * 100) / 100, fuente: (sym === "XAU" ? "Oro" : "Plata") + " · " + (Math.round(eurGramo * ley * 100) / 100) + " €/g" };
+}
+async function precioDeObjeto(item) {
+    if (item.src === "pokemon")
+        return precioPokemon(item.ref);
+    if (item.src === "mtg")
+        return precioMagic(item.ref);
+    if (item.src === "metal")
+        return precioMetal(item.ref);
+    if (item.src === "ia") {
+        const r = await aiEstimateCollectible(item.name, item.note);
+        if (!r)
+            throw new Error("La IA no supo ponerle precio");
+        return { value: r.precio, fuente: "IA · confianza " + r.confianza };
+    }
+    throw new Error("Este objeto no tiene fuente de precio");
 }
 function parseClaudeJson(text) {
     if (!text)
@@ -5165,9 +5265,12 @@ function CollectionItemCard({ item, onUpdate, onDel }) {
     const [eName, setEName] = useState(item.name || "");
     const [eNote, setENote] = useState(item.note || "");
     const [ePhoto, setEPhoto] = useState(item.photo || null);
-    const abrirEdicion = () => { setEName(item.name || ""); setENote(item.note || ""); setEPhoto(item.photo || null); setEditInfo(true); };
+    const [eSrc, setESrc] = useState(item.src || "");
+    const [eRef, setERef] = useState(item.ref || {});
+    const setRef = (k, v) => setERef((r) => ({ ...r, [k]: v }));
+    const abrirEdicion = () => { setEName(item.name || ""); setENote(item.note || ""); setEPhoto(item.photo || null); setESrc(item.src || ""); setERef(item.ref || {}); setEditInfo(true); };
     const guardarEdicion = () => { if (!eName.trim())
-        return; onUpdate({ name: eName.trim(), note: eNote, photo: ePhoto }); setEditInfo(false); };
+        return; onUpdate({ name: eName.trim(), note: eNote, photo: ePhoto, src: eSrc, ref: eRef }); setEditInfo(false); };
     const change = item.value != null && item.prev != null && item.prev !== 0 ? ((item.value - item.prev) / item.prev) * 100 : null;
     const up = change != null && change >= 0;
     const setValue = (newVal) => {
@@ -5177,20 +5280,18 @@ function CollectionItemCard({ item, onUpdate, onDel }) {
         const hist = [...(item.history || []), { t: nowISO(), v }].slice(-30);
         onUpdate({ prev: item.value != null ? item.value : v, value: v, history: hist });
     };
+    const conFuente = !!item.src && item.src !== "ia";
     const estimate = async () => {
         setAiBusy(true);
         setAiMsg(null);
         try {
-            const r = await aiEstimateCollectible(item.name, item.note);
-            if (r) {
-                setValue(r.precio);
-                setAiMsg({ ok: true, text: tri("Estimado por la IA · confianza {c}", { c: r.confianza }) });
-            }
-            else
-                setAiMsg({ ok: false, text: tr("La IA no ha sabido ponerle precio. Prueba a añadir detalles: año, edición, estado.") });
+            const r = await precioDeObjeto({ ...item, src: item.src || "ia" });
+            setValue(r.value);
+            onUpdate({ pricedAt: nowISO(), priceSrc: r.fuente });
+            setAiMsg({ ok: true, text: r.fuente + " · " + money(r.value) });
         }
         catch (e) {
-            setAiMsg({ ok: false, text: tr("No se ha podido conectar con la IA. Inténtalo otra vez.") });
+            setAiMsg({ ok: false, text: String((e && e.message) || e) });
         }
         finally {
             setAiBusy(false);
@@ -5222,11 +5323,28 @@ function CollectionItemCard({ item, onUpdate, onDel }) {
                 React.createElement("input", { style: inputStyle, value: eName, onChange: (e) => setEName(e.target.value), placeholder: tr("Nombre de la pieza"), autoFocus: true })),
             React.createElement(Field, { label: tr("Nota / detalle") },
                 React.createElement("input", { style: inputStyle, value: eNote, onChange: (e) => setENote(e.target.value), placeholder: tr("Estado, edición, año…") })),
+            React.createElement(Field, { label: tr("¿De dónde sale el precio?") },
+                React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } }, FUENTES_PRECIO.map((f) => React.createElement(Chip, { key: f.k, active: eSrc === f.k, onClick: () => setESrc(f.k) }, tr(f.l))))),
+            eSrc === "metal" && (React.createElement(React.Fragment, null,
+                React.createElement("div", { style: { display: "flex", gap: 6, marginBottom: 10 } },
+                    React.createElement(Chip, { active: (eRef.metal || "XAU") === "XAU", onClick: () => setRef("metal", "XAU") }, tr("Oro")),
+                    React.createElement(Chip, { active: eRef.metal === "XAG", onClick: () => setRef("metal", "XAG") }, tr("Plata"))),
+                React.createElement(Field, { label: tr("Gramos") },
+                    React.createElement("input", { type: "number", inputMode: "decimal", style: inputStyle, value: eRef.grams || "", onChange: (e) => setRef("grams", Number(e.target.value)), placeholder: "100" })),
+                React.createElement(Field, { label: tr("Ley") },
+                    React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } }, LEYES.map((l) => React.createElement(Chip, { key: l.k, active: (eRef.purity != null ? eRef.purity : 0.999) === l.k, onClick: () => setRef("purity", l.k) }, l.l)))))),
+            eSrc === "pokemon" && (React.createElement(Field, { label: tr("Id de la carta") },
+                React.createElement("input", { style: inputStyle, value: eRef.cardId || "", onChange: (e) => setRef("cardId", e.target.value.trim()), placeholder: "base1-4" }))),
+            eSrc === "mtg" && (React.createElement(React.Fragment, null,
+                React.createElement(Field, { label: tr("Nombre exacto en inglés") },
+                    React.createElement("input", { style: inputStyle, value: eRef.name || "", onChange: (e) => setRef("name", e.target.value), placeholder: "Black Lotus" })),
+                React.createElement(Field, { label: tr("Edición (opcional)") },
+                    React.createElement("input", { style: inputStyle, value: eRef.set || "", onChange: (e) => setRef("set", e.target.value.trim()), placeholder: "2ed" })))),
             React.createElement("div", { style: { display: "flex", gap: 8 } },
                 React.createElement("button", { onClick: guardarEdicion, style: miniBtn(C.yellow, C.ink) }, tr("Guardar")),
                 React.createElement("button", { onClick: () => setEditInfo(false), style: miniBtn(C.ink3, C.textLo) }, tr("Cancelar"))))) : (React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 10 } },
             React.createElement("button", { onClick: () => setEditing(true), style: miniBtn(C.ink3, C.textHi) }, tr("Actualizar valor")),
-            React.createElement("button", { onClick: estimate, disabled: aiBusy, style: miniBtn("rgba(144,19,254,.18)", C.purple) }, aiBusy ? "Estimando…" : "Estimar con IA"),
+            React.createElement("button", { onClick: estimate, disabled: aiBusy, style: miniBtn(conFuente ? "rgba(61,220,132,.18)" : "rgba(144,19,254,.18)", conFuente ? C.good : C.purple) }, aiBusy ? tr("Buscando…") : conFuente ? tr("Precio real") : tr("Estimar con IA")),
             React.createElement("button", { onClick: abrirEdicion, title: tr("Editar pieza"), style: { ...iconBtn, width: 38, height: 38, color: C.textLo } },
                 React.createElement(Pencil, { size: 14 })),
             React.createElement("button", { onClick: onDel, style: { ...iconBtn, width: 38, height: 38, color: C.textLo } },
