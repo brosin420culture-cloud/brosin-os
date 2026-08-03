@@ -343,7 +343,9 @@ El fichero `test_v31.js` (78 comprobaciones, todas en verde) cubre: forma y requ
 | v36 | `b60c61d` | Vender inversiones con ingreso real en Movimientos; historial de sueño completo |
 | v37 | `516f711` | Precio real en Colecciones: oro/plata al peso y cartas Pokémon/Magic |
 | v38 | `5ce1c2f` | **Fusión real de sincronización** con marcas de borrado |
-| **v39** | **`2d599c0` + `74cc81e`** | **Los 25 idiomas al día: 690 claves, I18N_VER = 39** ← actual |
+| v39 | `2d599c0` + `74cc81e` | Los 25 idiomas al día: 690 claves, I18N_VER = 39 |
+| v40 | `be653ee` + `3ef6e86` | Vender apunta **solo la ganancia**; Herramientas y Hábitos al abrir |
+| **v41** | **`5b3a4c8` + `4f4bcf3`** | **Sección Objetos: cartera de lo que cotiza de verdad. 711 claves, I18N_VER = 41** ← actual |
 
 ---
 
@@ -364,6 +366,34 @@ Resumen corto, el detalle está en cada commit:
 - **v38** — *fusión real de sincronización*: `updatedAt` por item, marcas de borrado en
   `state._tomb` y `fusionarEstados`. Dos dispositivos ya no se pisan.
 - **v39** — los 25 idiomas al día: 690 claves cada uno, `I18N_VER = 39`.
+
+### ✅ HECHAS después — v40 y v41 (03/08/2026)
+
+- **v40** — la venta de una inversión apuntaba SIEMPRE el cobro entero en Movimientos, y eso
+  infla el saldo si la compra nunca se apuntó como gasto (Kevin: compró por 2800, vendió por
+  3600, ganó 800, y la app le sumó 3600). Ahora se elige qué apuntar y **"Solo la ganancia" es
+  lo que viene marcado**. Además, Herramientas y Hábitos suben al principio de Vistazo.
+- **v41** — nueva pestaña **Objetos** dentro de Colecciones (`ObjetosPanel`): reúne las piezas
+  de todas las colecciones que tengan fuente de precio real y las trata como una cartera, con
+  valor total, variación desde la última actualización, actualización en lote y orden por valor
+  o por movimiento.
+
+**Decisión que NO hay que revertir:** el paquete `objetos/` que trajo Kevin incluía un motor que
+simula movimiento de precios cada pocos segundos para aparentar cotización en vivo. Se descartó a
+propósito. En una app donde se mira dinero real, enseñar movimiento inventado es engañoso. El
+precio solo cambia cuando se consulta de verdad. De ese paquete se aprovecharon los **proveedores**
+(qué endpoint llamar y qué campo leer), no su arquitectura: asumía Flutter y una lista fija en el
+repo, y aquí los objetos los mete el usuario.
+
+### 🟠 DEUDA CONOCIDA — el código fuente NO está en el repo
+`BrosinOS.jsx` y `build_pwa.js` viven solo en el ordenador de Kevin y en los ZIP de traspaso. El
+repo solo tiene el `index.html` ya compilado. Si se pierde esa carpeta, se pierde el fuente y solo
+queda el bundle. **Conviene subir el fuente al repo.**
+
+### 🟠 DEUDA CONOCIDA — terminología inconsistente en algunos idiomas
+El lote de la v39 introdujo términos que chocan con el glosario anterior: en francés "Mouvements"
+donde ya se usaba "Opérations", en alemán "Bewegungen" donde había "Buchungen", en búlgaro
+"Движения" donde había "Транзакции". No rompe nada, pero canta. Merece una pasada de repaso.
 
 ### 🔴 REGLA NUEVA — traducir en la misma versión, no después
 Kevin lo pidió expresamente el 03/08/2026: **cada versión que añada texto visible se publica ya
