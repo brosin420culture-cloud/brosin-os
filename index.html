@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
 <title>Brosin OS</title>
 <meta name="description" content="Tu segundo cerebro. Bro, no te quedes sin." />
-<meta name="brosin-build" content="v39" />
+<meta name="brosin-build" content="v40" />
 <meta name="theme-color" content="#0a0a0a" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
@@ -59,7 +59,7 @@
 <div id="root">
   <div id="splash">
     <img class="bl" src="./brosin_eye.png" alt="Brosin" />
-    <div class="s">Despertando la colmena… · v39</div>
+    <div class="s">Despertando la colmena… · v40</div>
     <div class="l"></div>
   </div>
 </div>
@@ -78,7 +78,7 @@ import { Home, CalendarDays, Wallet, Package, Brain, Plus, Check, X, Target, Tre
    diccionario activo; si falta, devuelve el español (nunca se ve un hueco).
    Diccionarios: /i18n/{lang}.json — se descargan solo al elegir el idioma y
    quedan cacheados. El marco remonta con key={...lang} al cambiar. */
-const I18N_VER = "39"; // rompe la caché del SW al subir versión
+const I18N_VER = "40"; // rompe la caché del SW al subir versión
 const LANGS = [
     { k: "auto", label: "Automático" },
     { k: "es", label: "Español", flag: "🇪🇸", locale: "es-ES" },
@@ -2621,17 +2621,7 @@ function HomeScreen({ state, dispatch, go, ai, openMarkets, toast }) {
                     React.createElement("button", { onClick: () => go("agenda"), style: { ...iconBtn, width: "auto", margin: "16px auto 0", paddingInline: 16, gap: 6, fontWeight: 800, fontSize: 13, background: C.yellow, color: C.ink, borderColor: C.yellow } },
                         React.createElement(Plus, { size: 15, strokeWidth: 3 }),
                         " ",
-                        tr("Planificar")))) : (React.createElement("div", { className: "bstagger", style: { display: "grid", gap: 10 } }, todays.map((e) => (React.createElement(EventRow, { key: e.id, e: e, onToggle: () => dispatch({ type: "update", col: "events", id: e.id, patch: { done: !e.done } }) }))))),
-                React.createElement("h3", { style: { ...sectionH, fontSize: 13.5, margin: "22px 0 12px" } }, tr("Herramientas")),
-                React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12 } },
-                    React.createElement(ToolButton, { icon: Camera, label: tr("Cámara"), accent: C.yellow, anim: "camera", onClick: () => go("camara") }),
-                    React.createElement(ToolButton, { icon: Lightbulb, label: tr("Idea"), accent: C.purple, anim: "bulb", onClick: () => setIdeaOpen(true) }),
-                    React.createElement(ToolButton, { icon: Calculator, label: tr("Calcular"), accent: C.yellow, anim: "calc", onClick: () => setCalcOpen(true) }),
-                    React.createElement(ToolButton, { icon: Cake, label: tr("Cumpleaños"), accent: C.purple, anim: "cake", onClick: () => go("personas") }),
-                    React.createElement(ToolButton, { icon: Users, label: tr("Equipo"), accent: C.purple, anim: "team", onClick: () => go("equipo") }),
-                    React.createElement(ToolButton, { icon: LineChart, label: tr("Mercados"), accent: C.yellow, anim: "chart", onClick: openMarkets }),
-                    React.createElement(ToolButton, { icon: Car, label: tr("Conducción"), accent: C.purple, active: (_a = state.drive) === null || _a === void 0 ? void 0 : _a.active, anim: "car", onClick: () => go("conduccion") }),
-                    React.createElement(ToolButton, { icon: Smartphone, label: tr("Pantalla"), accent: C.yellow, anim: "phone", onClick: () => go("pantalla") })))),
+                        tr("Planificar")))) : (React.createElement("div", { className: "bstagger", style: { display: "grid", gap: 10 } }, todays.map((e) => (React.createElement(EventRow, { key: e.id, e: e, onToggle: () => dispatch({ type: "update", col: "events", id: e.id, patch: { done: !e.done } }) }))))))),
             homeTab === "semana" && (React.createElement("div", null,
                 week.map((d) => {
                     const iso = localISO(d);
@@ -2651,6 +2641,39 @@ function HomeScreen({ state, dispatch, go, ai, openMarkets, toast }) {
                     " ",
                     tr("Abrir agenda completa")))),
             homeTab === "vistazo" && (React.createElement(React.Fragment, null,
+                React.createElement("h3", { style: { ...sectionH, fontSize: 13.5, margin: "0 0 12px" } }, tr("Herramientas")),
+                React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 18 } },
+                    React.createElement(ToolButton, { icon: Camera, label: tr("Cámara"), accent: C.yellow, anim: "camera", onClick: () => go("camara") }),
+                    React.createElement(ToolButton, { icon: Lightbulb, label: tr("Idea"), accent: C.purple, anim: "bulb", onClick: () => setIdeaOpen(true) }),
+                    React.createElement(ToolButton, { icon: Calculator, label: tr("Calcular"), accent: C.yellow, anim: "calc", onClick: () => setCalcOpen(true) }),
+                    React.createElement(ToolButton, { icon: Cake, label: tr("Cumpleaños"), accent: C.purple, anim: "cake", onClick: () => go("personas") }),
+                    React.createElement(ToolButton, { icon: Users, label: tr("Equipo"), accent: C.purple, anim: "team", onClick: () => go("equipo") }),
+                    React.createElement(ToolButton, { icon: LineChart, label: tr("Mercados"), accent: C.yellow, anim: "chart", onClick: openMarkets }),
+                    React.createElement(ToolButton, { icon: Car, label: tr("Conducción"), accent: C.purple, active: (_a = state.drive) === null || _a === void 0 ? void 0 : _a.active, anim: "car", onClick: () => go("conduccion") }),
+                    React.createElement(ToolButton, { icon: Smartphone, label: tr("Pantalla"), accent: C.yellow, anim: "phone", onClick: () => go("pantalla") })),
+                (() => {
+                    const hoyISO = todayISO();
+                    const habs = state.habits || [];
+                    if (!habs.length)
+                        return null;
+                    const hechos = habs.filter((h) => (h.done || []).includes(hoyISO)).length;
+                    return (React.createElement(React.Fragment, null,
+                        React.createElement("h3", { style: { ...sectionH, fontSize: 13.5, margin: "0 0 10px", display: "flex", alignItems: "center", gap: 8 } },
+                            tr("Hábitos de hoy"),
+                            React.createElement("span", { style: { color: hechos === habs.length ? C.good : C.textLo, fontSize: 11.5, fontWeight: 800 } },
+                                hechos,
+                                "/",
+                                habs.length)),
+                        React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 18 } }, habs.map((h) => {
+                            const hecho = (h.done || []).includes(hoyISO);
+                            return (React.createElement("button", { key: h.id, onClick: () => { const set = new Set(h.done || []); if (set.has(hoyISO))
+                                    set.delete(hoyISO);
+                                else
+                                    set.add(hoyISO); dispatch({ type: "update", col: "habits", id: h.id, patch: { done: [...set] } }); }, style: { borderRadius: 999, padding: "7px 13px", fontSize: 12.5, fontWeight: 800, cursor: "pointer", border: `1.5px solid ${hecho ? C.good : C.line}`, background: hecho ? "rgba(61,220,132,.15)" : "transparent", color: hecho ? C.good : C.textHi } },
+                                hecho ? "✓ " : "",
+                                h.name));
+                        }))));
+                })(),
                 ai && React.createElement("div", { style: { marginBottom: 14 } },
                     React.createElement(AiBrief, { ai: ai, state: state })),
                 birthday && (React.createElement("button", { onClick: () => go("personas"), style: { ...card, width: "100%", textAlign: "left", padding: "12px 14px", marginBottom: 14, display: "flex", alignItems: "center", gap: 10, cursor: "pointer", borderColor: C.purple, background: "rgba(144,19,254,.08)" } },
@@ -3557,10 +3580,18 @@ function MoneyScreen({ state, dispatch, tab, setTab, toast, ai }) {
                 else
                     dispatch({ type: "add", col: "investments", item: { id: uid(), ...d } }); setSheet(null); setEditInv(null); }, onSell: editInv ? (v) => {
                     dispatch({ type: "update", col: "investments", id: editInv.id, patch: { sold: true, soldAt: v.fecha, soldFor: v.precio } });
-                    if (v.aMovimientos)
-                        dispatch({ type: "add", col: "tx", item: { id: uid(), type: "ingreso", amount: v.precio, note: "Venta: " + (editInv.name || ""), category: "Negocio", date: v.fecha } });
                     const g = v.precio - Number(editInv.invested || 0);
-                    toast && toast(g >= 0 ? "Venta apuntada ✓" : "Venta apuntada", `${editInv.name}: ${g >= 0 ? "+" : ""}${money(g)}${v.aMovimientos ? " · ingreso en Movimientos" : ""}`);
+                    let apuntado = "";
+                    if (v.registro === "total") {
+                        dispatch({ type: "add", col: "tx", item: { id: uid(), type: "ingreso", amount: v.precio, note: "Venta: " + (editInv.name || ""), category: "Negocio", date: v.fecha } });
+                        apuntado = " · " + money(v.precio) + " en Movimientos";
+                    }
+                    else if (v.registro === "ganancia" && g !== 0) {
+                        // solo el beneficio (o la pérdida): es lo correcto si la compra nunca se apuntó
+                        dispatch({ type: "add", col: "tx", item: { id: uid(), type: g > 0 ? "ingreso" : "gasto", amount: Math.abs(g), note: (g > 0 ? "Ganancia: " : "Pérdida: ") + (editInv.name || ""), category: "Negocio", date: v.fecha } });
+                        apuntado = " · " + money(Math.abs(g)) + " en Movimientos";
+                    }
+                    toast && toast(g >= 0 ? "Venta apuntada ✓" : "Venta apuntada", `${editInv.name}: ${g >= 0 ? "+" : ""}${money(g)}${apuntado}`);
                     setSheet(null);
                     setEditInv(null);
                 } : null, onDelete: editInv ? () => { dispatch({ type: "remove", col: "investments", id: editInv.id }); setSheet(null); setEditInv(null); } : null })),
@@ -4993,7 +5024,10 @@ function SellBlock({ initial, onSell }) {
     const [abierto, setAbierto] = useState(false);
     const [precio, setPrecio] = useState("");
     const [fecha, setFecha] = useState(todayISO());
-    const [aMovimientos, setAMovimientos] = useState(true);
+    // Qué apuntar en Movimientos. Por defecto SOLO la ganancia: si la compra nunca se
+    // apuntó como gasto, meter el cobro entero infla el saldo (compras por 2800, vendes
+    // por 3600 y parecería que has ingresado 3600 de la nada, cuando ganaste 800).
+    const [registro, setRegistro] = useState("ganancia");
     const invertido = Number(initial.invested || 0);
     const gan = precio !== "" ? Number(precio) - invertido : null;
     if (!abierto) {
@@ -5009,11 +5043,21 @@ function SellBlock({ initial, onSell }) {
         React.createElement(Field, { label: tr("Día de la venta") },
             React.createElement("input", { type: "date", style: inputStyle, value: fecha, onChange: (e) => setFecha(e.target.value) })),
         gan != null && !isNaN(gan) && (React.createElement("div", { style: { color: gan >= 0 ? C.good : C.bad, fontWeight: 800, fontSize: 13.5, marginBottom: 10 } }, tri("Invertiste {i} · {r} de {g}", { i: money(invertido), r: gan >= 0 ? tr("ganancia") : tr("pérdida"), g: money(Math.abs(gan)) }))),
-        React.createElement("button", { onClick: () => setAMovimientos(!aMovimientos), style: { display: "flex", alignItems: "center", gap: 10, width: "100%", background: C.ink3, border: `1px solid ${aMovimientos ? C.good : C.line}`, borderRadius: 12, padding: "10px 12px", cursor: "pointer", marginBottom: 12 } },
-            React.createElement("div", { style: { width: 20, height: 20, borderRadius: 6, flexShrink: 0, border: `2px solid ${aMovimientos ? C.good : C.line}`, background: aMovimientos ? C.good : "transparent", display: "grid", placeItems: "center" } }, aMovimientos && React.createElement(Check, { size: 12, color: C.ink, strokeWidth: 3.5 })),
-            React.createElement("span", { style: { flex: 1, textAlign: "left", color: C.textHi, fontSize: 12.5, fontWeight: 700 } }, tr("Apuntarlo como ingreso en Movimientos"))),
+        React.createElement(Field, { label: tr("¿Qué apunto en Movimientos?") },
+            React.createElement("div", { style: { display: "grid", gap: 6 } }, [
+                { k: "ganancia", l: tr("Solo la ganancia"), d: tr("La compra no estaba apuntada como gasto") },
+                { k: "total", l: tr("El cobro entero"), d: tr("Solo si apuntaste la compra como gasto") },
+                { k: "nada", l: tr("Nada"), d: tr("Que quede solo dentro de Inversiones") },
+            ].map((o) => (React.createElement("button", { key: o.k, onClick: () => setRegistro(o.k), style: { display: "flex", alignItems: "center", gap: 10, width: "100%", background: C.ink3, border: `1px solid ${registro === o.k ? C.good : C.line}`, borderRadius: 12, padding: "9px 12px", cursor: "pointer", textAlign: "left" } },
+                React.createElement("div", { style: { width: 18, height: 18, borderRadius: 999, flexShrink: 0, border: `2px solid ${registro === o.k ? C.good : C.line}`, background: registro === o.k ? C.good : "transparent" } }),
+                React.createElement("span", { style: { flex: 1 } },
+                    React.createElement("span", { style: { display: "block", color: C.textHi, fontSize: 12.5, fontWeight: 700 } },
+                        o.l,
+                        o.k === "ganancia" && gan != null && !isNaN(gan) ? " · " + money(Math.abs(gan)) : "",
+                        o.k === "total" && precio !== "" ? " · " + money(Number(precio)) : ""),
+                    React.createElement("span", { style: { display: "block", color: C.textLo, fontSize: 10.5 } }, o.d))))))),
         React.createElement(PrimaryBtn, { full: true, color: C.good, onClick: () => { const p = Number(precio); if (!isFinite(p) || precio === "")
-                return; onSell({ precio: p, fecha: fecha || todayISO(), aMovimientos }); } },
+                return; onSell({ precio: p, fecha: fecha || todayISO(), registro }); } },
             React.createElement(Check, { size: 18, strokeWidth: 3 }),
             " ",
             tr("Confirmar venta")),
