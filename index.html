@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
 <title>Brosin OS</title>
 <meta name="description" content="Tu segundo cerebro. Bro, no te quedes sin." />
-<meta name="brosin-build" content="v35" />
+<meta name="brosin-build" content="v36" />
 <meta name="theme-color" content="#0a0a0a" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
@@ -59,7 +59,7 @@
 <div id="root">
   <div id="splash">
     <img class="bl" src="./brosin_eye.png" alt="Brosin" />
-    <div class="s">Despertando la colmena… · v35</div>
+    <div class="s">Despertando la colmena… · v36</div>
     <div class="l"></div>
   </div>
 </div>
@@ -2756,6 +2756,7 @@ function ShortcutCard({ icon: Ico, label, accent, onClick, active }) {
 }
 function SleepCard({ state, dispatch, toast }) {
     const [open, setOpen] = useState(false);
+    const [histOpen, setHistOpen] = useState(false);
     const [logDate, setLogDate] = useState(todayISO());
     const goal = state.profile.sleepGoal || 8;
     const min = state.profile.sleepMin || 7;
@@ -2829,7 +2830,17 @@ function SleepCard({ state, dispatch, toast }) {
                 tr("Cerrar")))) : (React.createElement("button", { onClick: () => openFor(todayISO()), style: { ...iconBtn, width: "100%", height: 42, marginTop: 12, gap: 8, fontWeight: 800, fontSize: 13.5, background: C.ink3 } },
             React.createElement(Moon, { size: 15 }),
             " ",
-            lastIsToday ? tr("Editar sueño · registrar otro día") : tr("Registrar tu sueño")))));
+            lastIsToday ? tr("Editar sueño · registrar otro día") : tr("Registrar tu sueño"))),
+        log.length > 0 && (React.createElement("button", { onClick: () => setHistOpen(!histOpen), style: { ...iconBtn, width: "100%", height: 34, marginTop: 8, gap: 6, fontWeight: 700, fontSize: 12, background: "none", color: C.textLo } }, histOpen ? tr("Ocultar historial") : tri("Ver todo el historial ({n} noches)", { n: log.length }))),
+        histOpen && (React.createElement("div", { style: { marginTop: 8, maxHeight: 260, overflowY: "auto", display: "grid", gap: 6 } }, [...log].sort((a, b) => b.date.localeCompare(a.date)).map((e) => (React.createElement("div", { key: e.date, style: { display: "flex", alignItems: "center", gap: 10, background: C.ink3, borderRadius: 10, padding: "8px 10px" } },
+            React.createElement("span", { style: { flex: 1, color: C.textHi, fontSize: 12.5, textTransform: "capitalize" } }, fmtDate(e.date)),
+            React.createElement("span", { style: { color: e.hours < min ? C.bad : C.yellow, fontWeight: 800, fontSize: 13.5 } },
+                e.hours,
+                " h"),
+            React.createElement("button", { onClick: () => { setHistOpen(false); openFor(e.date); }, title: tr("Corregir este día"), style: { ...iconBtn, width: 30, height: 30, color: C.textLo } },
+                React.createElement(Pencil, { size: 13 })),
+            React.createElement("button", { onClick: () => dispatch({ type: "setCol", col: "sleepLog", items: log.filter((x) => x.date !== e.date) }), title: tr("Borrar este día"), style: { ...iconBtn, width: 30, height: 30, color: C.textLo } },
+                React.createElement(Trash2, { size: 13 })))))))));
 }
 function StatCard({ label, value, icon: Ico, accent, onClick }) {
     return (React.createElement("button", { onClick: onClick, style: { ...card, padding: 14, textAlign: "left", cursor: "pointer", display: "flex", flexDirection: "column", gap: 8 } },
@@ -3236,9 +3247,13 @@ function MoneyScreen({ state, dispatch, tab, setTab, toast, ai }) {
     const balance = state.tx.reduce((s, x) => s + (x.type === "ingreso" ? 1 : -1) * Number(x.amount || 0), 0);
     const income = state.tx.filter((x) => x.type === "ingreso").reduce((s, x) => s + Number(x.amount || 0), 0);
     const spend = state.tx.filter((x) => x.type === "gasto").reduce((s, x) => s + Number(x.amount || 0), 0);
-    const invTotal = state.investments.reduce((s, i) => s + curVal(i), 0);
-    const invCost = state.investments.reduce((s, i) => s + Number(i.invested || 0), 0);
+    // Lo vendido deja de contar como cartera: pasa a "ganancia realizada".
+    const invActivas = state.investments.filter((i) => !i.sold);
+    const invVendidas = state.investments.filter((i) => i.sold);
+    const invTotal = invActivas.reduce((s, i) => s + curVal(i), 0);
+    const invCost = invActivas.reduce((s, i) => s + Number(i.invested || 0), 0);
     const invPnl = invTotal - invCost;
+    const invRealizado = invVendidas.reduce((s, i) => s + (Number(i.soldFor || 0) - Number(i.invested || 0)), 0);
     return (React.createElement("div", { style: { padding: "20px 18px 0" } },
         React.createElement(Title, { kicker: tr("Tus cuentas") }, tr("Dinero")),
         React.createElement("div", { style: {
@@ -3300,15 +3315,20 @@ function MoneyScreen({ state, dispatch, tab, setTab, toast, ai }) {
                     React.createElement("div", { style: { color: C.textLo, fontSize: 11, fontWeight: 700, letterSpacing: 1.2 } }, "VALOR ACTUAL"),
                     React.createElement("div", { style: { color: C.textHi, fontWeight: 900, fontSize: 23, letterSpacing: -0.6, fontVariantNumeric: "tabular-nums" } }, money(invTotal))),
                 React.createElement("div", { style: { textAlign: "right" } },
-                    React.createElement("div", { style: { color: C.textLo, fontSize: 11, fontWeight: 700, letterSpacing: 1.2 } }, "GANANCIA"),
+                    React.createElement("div", { style: { color: C.textLo, fontSize: 11, fontWeight: 700, letterSpacing: 1.2 } }, tr("SIN VENDER")),
                     React.createElement("div", { style: { color: invPnl >= 0 ? C.good : C.bad, fontWeight: 900, fontSize: 18, letterSpacing: -0.4, fontVariantNumeric: "tabular-nums" } },
                         invPnl >= 0 ? "+" : "",
-                        money(invPnl))))) }, state.investments.map((i) => {
+                        money(invPnl)),
+                    invVendidas.length > 0 && (React.createElement(React.Fragment, null,
+                        React.createElement("div", { style: { color: C.textLo, fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2, marginTop: 6 } }, tr("YA GANADO")),
+                        React.createElement("div", { style: { color: invRealizado >= 0 ? C.good : C.bad, fontWeight: 900, fontSize: 15, fontVariantNumeric: "tabular-nums" } },
+                            invRealizado >= 0 ? "+" : "",
+                            money(invRealizado))))))) }, state.investments.map((i) => {
             const cv = curVal(i);
             const pnl = cv - Number(i.invested || 0);
             const pct = i.invested ? (pnl / i.invested) * 100 : 0;
             const isCrypto = i.kind === "crypto";
-            return (React.createElement("button", { key: i.id, onClick: () => { setEditInv(i); setSheet("inv"); }, style: { ...card, padding: 14, width: "100%", textAlign: "left", cursor: "pointer" } },
+            return (React.createElement("button", { key: i.id, onClick: () => { setEditInv(i); setSheet("inv"); }, style: { ...card, padding: 14, width: "100%", textAlign: "left", cursor: "pointer", opacity: i.sold ? 0.6 : 1, borderColor: i.sold ? C.good : C.line } },
                 React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
                     React.createElement("div", { style: { width: 38, height: 38, borderRadius: 11, background: C.ink3, display: "grid", placeItems: "center" } }, isCrypto ? React.createElement(Coins, { size: 18, color: C.yellow }) : React.createElement(Landmark, { size: 18, color: C.yellow })),
                     React.createElement("div", { style: { flex: 1, minWidth: 0 } },
@@ -3335,7 +3355,15 @@ function MoneyScreen({ state, dispatch, tab, setTab, toast, ai }) {
             sheet === "inv" && React.createElement(InvForm, { initial: editInv, livePrices: invPrices, onSave: (d) => { if (editInv)
                     dispatch({ type: "update", col: "investments", id: editInv.id, patch: d });
                 else
-                    dispatch({ type: "add", col: "investments", item: { id: uid(), ...d } }); setSheet(null); setEditInv(null); }, onDelete: editInv ? () => { dispatch({ type: "remove", col: "investments", id: editInv.id }); setSheet(null); setEditInv(null); } : null })),
+                    dispatch({ type: "add", col: "investments", item: { id: uid(), ...d } }); setSheet(null); setEditInv(null); }, onSell: editInv ? (v) => {
+                    dispatch({ type: "update", col: "investments", id: editInv.id, patch: { sold: true, soldAt: v.fecha, soldFor: v.precio } });
+                    if (v.aMovimientos)
+                        dispatch({ type: "add", col: "tx", item: { id: uid(), type: "ingreso", amount: v.precio, note: "Venta: " + (editInv.name || ""), category: "Negocio", date: v.fecha } });
+                    const g = v.precio - Number(editInv.invested || 0);
+                    toast && toast(g >= 0 ? "Venta apuntada ✓" : "Venta apuntada", `${editInv.name}: ${g >= 0 ? "+" : ""}${money(g)}${v.aMovimientos ? " · ingreso en Movimientos" : ""}`);
+                    setSheet(null);
+                    setEditInv(null);
+                } : null, onDelete: editInv ? () => { dispatch({ type: "remove", col: "investments", id: editInv.id }); setSheet(null); setEditInv(null); } : null })),
         React.createElement(Sheet, { open: !!chartDetail, onClose: () => setChartDetail(null), title: chartDetail === "meses" ? "Por meses" : chartDetail === "categorias" ? "Por categorías" : chartDetail === "balance" ? tr("Movimiento a movimiento") : tr("Tus inversiones") },
             React.createElement(ChartDetailSheet, { which: chartDetail, tx: state.tx, investments: state.investments.map((i) => ({ ...i, cur: curVal(i) })) }))));
 }
@@ -4692,7 +4720,7 @@ function DebtCard({ d, dispatch, onEdit }) {
                 React.createElement(Trash2, { size: 14 }))))));
 }
 const INV_CRYPTOS = [{ name: "Bitcoin", sym: "BTC", cg: "bitcoin" }, { name: "Ethereum", sym: "ETH", cg: "ethereum" }, { name: "Solana", sym: "SOL", cg: "solana" }];
-function InvForm({ initial, onSave, onDelete, livePrices }) {
+function InvForm({ initial, onSave, onDelete, onSell, livePrices }) {
     const [kind, setKind] = useState((initial === null || initial === void 0 ? void 0 : initial.kind) || "manual");
     const [name, setName] = useState((initial === null || initial === void 0 ? void 0 : initial.name) || "");
     const [invested, setInvested] = useState((initial === null || initial === void 0 ? void 0 : initial.invested) != null ? String(initial.invested) : "");
@@ -4750,10 +4778,46 @@ function InvForm({ initial, onSave, onDelete, livePrices }) {
             React.createElement(Check, { size: 18, strokeWidth: 3 }),
             " ",
             initial ? tr("Guardar cambios") : tr("Guardar")),
+        onSell && initial && !initial.sold && React.createElement(SellBlock, { initial: initial, onSell: onSell }),
+        initial && initial.sold && (React.createElement("div", { style: { ...card, padding: 12, marginTop: 12, background: "rgba(61,220,132,.08)", borderColor: C.good } },
+            React.createElement("div", { style: { color: C.good, fontWeight: 800, fontSize: 13 } }, tri("Vendida el {d} por {p}", { d: fmtDate(String(initial.soldAt || "").slice(0, 10)), p: money(initial.soldFor) })),
+            React.createElement("div", { style: { color: C.textLo, fontSize: 12, marginTop: 3 } }, tri("Ganancia: {g}", { g: money(Number(initial.soldFor || 0) - Number(initial.invested || 0)) })))),
         onDelete && React.createElement("button", { onClick: onDelete, style: { ...iconBtn, width: "100%", height: 44, marginTop: 10, gap: 8, fontWeight: 700, fontSize: 13.5, color: C.bad, borderColor: "rgba(255,92,92,.4)" } },
             React.createElement(Trash2, { size: 16 }),
             " ",
             tr("Borrar inversión"))));
+}
+/* Vender una inversión. Lo que cobras entra como ingreso real en Movimientos,
+   para que el dinero de la app cuadre con el del bolsillo. */
+function SellBlock({ initial, onSell }) {
+    const [abierto, setAbierto] = useState(false);
+    const [precio, setPrecio] = useState("");
+    const [fecha, setFecha] = useState(todayISO());
+    const [aMovimientos, setAMovimientos] = useState(true);
+    const invertido = Number(initial.invested || 0);
+    const gan = precio !== "" ? Number(precio) - invertido : null;
+    if (!abierto) {
+        return React.createElement("button", { onClick: () => setAbierto(true), style: { ...iconBtn, width: "100%", height: 44, marginTop: 10, gap: 8, fontWeight: 700, fontSize: 13.5, color: C.good, borderColor: "rgba(61,220,132,.45)" } },
+            React.createElement(HandCoins, { size: 16 }),
+            " ",
+            tr("Vender esta inversión"));
+    }
+    return (React.createElement("div", { style: { ...card, padding: 14, marginTop: 12 } },
+        React.createElement("div", { style: { color: C.textHi, fontWeight: 800, fontSize: 14, marginBottom: 10 } }, tr("Vender")),
+        React.createElement(Field, { label: tr("¿Por cuánto la vendes? (€)") },
+            React.createElement("input", { type: "number", inputMode: "decimal", autoFocus: true, style: inputStyle, value: precio, onChange: (e) => setPrecio(e.target.value), placeholder: "0,00" })),
+        React.createElement(Field, { label: tr("Día de la venta") },
+            React.createElement("input", { type: "date", style: inputStyle, value: fecha, onChange: (e) => setFecha(e.target.value) })),
+        gan != null && !isNaN(gan) && (React.createElement("div", { style: { color: gan >= 0 ? C.good : C.bad, fontWeight: 800, fontSize: 13.5, marginBottom: 10 } }, tri("Invertiste {i} · {r} de {g}", { i: money(invertido), r: gan >= 0 ? tr("ganancia") : tr("pérdida"), g: money(Math.abs(gan)) }))),
+        React.createElement("button", { onClick: () => setAMovimientos(!aMovimientos), style: { display: "flex", alignItems: "center", gap: 10, width: "100%", background: C.ink3, border: `1px solid ${aMovimientos ? C.good : C.line}`, borderRadius: 12, padding: "10px 12px", cursor: "pointer", marginBottom: 12 } },
+            React.createElement("div", { style: { width: 20, height: 20, borderRadius: 6, flexShrink: 0, border: `2px solid ${aMovimientos ? C.good : C.line}`, background: aMovimientos ? C.good : "transparent", display: "grid", placeItems: "center" } }, aMovimientos && React.createElement(Check, { size: 12, color: C.ink, strokeWidth: 3.5 })),
+            React.createElement("span", { style: { flex: 1, textAlign: "left", color: C.textHi, fontSize: 12.5, fontWeight: 700 } }, tr("Apuntarlo como ingreso en Movimientos"))),
+        React.createElement(PrimaryBtn, { full: true, color: C.good, onClick: () => { const p = Number(precio); if (!isFinite(p) || precio === "")
+                return; onSell({ precio: p, fecha: fecha || todayISO(), aMovimientos }); } },
+            React.createElement(Check, { size: 18, strokeWidth: 3 }),
+            " ",
+            tr("Confirmar venta")),
+        React.createElement("button", { onClick: () => setAbierto(false), style: { ...iconBtn, width: "100%", height: 38, marginTop: 8, fontSize: 12.5, color: C.textLo } }, tr("Cancelar"))));
 }
 /* ============================================================
    COLECCIÓN + FIADOS
