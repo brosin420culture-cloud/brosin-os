@@ -1,19 +1,10 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="utf-8" />
+<!DOCTYPE html><html lang="es"><head><meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
-<title>Brosin OS</title>
-<meta name="description" content="Tu segundo cerebro. Bro, no te quedes sin." />
-<meta name="brosin-build" content="v44" />
-<meta name="theme-color" content="#0a0a0a" />
-<meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="Brosin" />
-<link rel="manifest" href="./manifest.webmanifest" />
-<link rel="apple-touch-icon" href="./apple-touch-icon.png" />
-<link rel="icon" type="image/png" href="./icon-192.png" />
+<title>Brosin OS</title><meta name="description" content="Tu segundo cerebro. Bro, no te quedes sin." />
+<meta name="brosin-build" content="v45" /><meta name="theme-color" content="#0a0a0a" />
+<meta name="apple-mobile-web-app-capable" content="yes" /><meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" /><meta name="apple-mobile-web-app-title" content="Brosin" />
+<link rel="manifest" href="./manifest.webmanifest" /><link rel="apple-touch-icon" href="./apple-touch-icon.png" /><link rel="icon" type="image/png" href="./icon-192.png" />
 <style>
   html,body{margin:0;padding:0;background:#0a0a0a;height:100%;overscroll-behavior:none;-webkit-tap-highlight-color:transparent}
   body{font-family:'Inter','SF Pro Display',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
@@ -28,44 +19,23 @@
   #splash .l{margin-top:26px;width:26px;height:26px;border:3px solid #262626;border-top-color:#FFD400;border-radius:50%;animation:sp 0.9s linear infinite,fin .5s .35s ease both}
 </style>
 <script type="importmap">
-{ "imports": {
-  "react": "https://esm.sh/react@18.3.1",
-  "react-dom": "https://esm.sh/react-dom@18.3.1",
-  "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
-  "lucide-react": "https://esm.sh/lucide-react@0.456.0?external=react&deps=react@18.3.1",
-  "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2"
-}}
+{ "imports": { "react": "https://esm.sh/react@18.3.1", "react-dom": "https://esm.sh/react-dom@18.3.1", "react-dom/client": "https://esm.sh/react-dom@18.3.1/client", "lucide-react": "https://esm.sh/lucide-react@0.456.0?external=react&deps=react@18.3.1", "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2" }}
 </script>
 <script>
-  // Route AI calls through the same-origin serverless proxy (avoids mobile CORS blocking)
   window.__BROSIN_PROXY = "/api/claude";
-  // Cloud sync (Supabase) — publishable key is safe to embed (protected by Row-Level Security)
   window.__SB_URL = "https://xjawjkrgxdhxanwtjcpb.supabase.co";
   window.__SB_KEY = "sb_publishable_cc5n2vvUF6SeLcGEz7DgOg_R_b54kJd";
-  // Push notifications: VAPID public key (safe to embed; it's the public half)
   window.__VAPID_PUBLIC = "BIU_VfkgQ5nh9VYOZrIvMaWFPFc1NmSJwy5nGRjRQQ-1aavXArXnBjHaa4vwJNumrNR-1zvgSVLqhy19BUO_734";
-  // Local persistence shim so the app's window.storage works on-device (no Claude sandbox here)
   window.storage = {
     get: async function(k){ try { var v = localStorage.getItem("brosin:"+k); return v ? JSON.parse(v) : null; } catch(e){ return null; } },
-    // OJO: no tragarse el error. Si el almacén está lleno, la app tiene que
-    // enterarse para avisar; antes fallaba en silencio y parecía que guardaba.
     set: async function(k,v){ localStorage.setItem("brosin:"+k, JSON.stringify(v)); return true; }
   };
-  // Register service worker (needs https or localhost)
-  if ("serviceWorker" in navigator) {
-    window.addEventListener("load", function(){ navigator.serviceWorker.register("./service-worker.js").catch(function(){}); });
-  }
+  if ("serviceWorker" in navigator) { window.addEventListener("load", function(){ navigator.serviceWorker.register("./service-worker.js").catch(function(){}); }); }
 </script>
-</head>
-<body>
-<div id="root">
-  <div id="splash">
-    <img class="bl" src="./brosin_eye.png" alt="Brosin" />
-    <div class="s">Despertando la colmena… · v44</div>
-    <div class="l"></div>
-  </div>
-</div>
-<script type="module">
+</head><body><div id="root"><div id="splash">
+  <img class="bl" src="./brosin_eye.png" alt="Brosin" />
+  <div class="s">Despertando la colmena… · v45</div><div class="l"></div>
+</div></div><script type="module">
 import { createRoot } from "react-dom/client";
 import React, { useReducer, useEffect, useState, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
@@ -80,7 +50,7 @@ import { Home, CalendarDays, Wallet, Brain, Plus, Check, X, Target, TrendingUp, 
    diccionario activo; si falta, devuelve el español (nunca se ve un hueco).
    Diccionarios: /i18n/{lang}.json — se descargan solo al elegir el idioma y
    quedan cacheados. El marco remonta con key={...lang} al cambiar. */
-const I18N_VER = "44"; // rompe la caché del SW al subir versión
+const I18N_VER = "45"; // rompe la caché del SW al subir versión
 const LANGS = [
     { k: "auto", label: "Automático" },
     { k: "es", label: "Español", flag: "🇪🇸", locale: "es-ES" },
@@ -408,7 +378,15 @@ const AREAS = [
 ];
 /* ---------- tiny utils ---------- */
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
-const todayISO = () => new Date().toISOString().slice(0, 10);
+/* "Hoy" es TU hoy, no el de Greenwich. Con toISOString() en España, entre las
+   00:00 y las 02:00 el día seguía siendo el de ayer: marcabas un hábito a la
+   una de la mañana y se apuntaba en el día anterior, la misión salía ya hecha
+   y el cierre del día se equivocaba de fecha. La cabecera ya usaba la fecha
+   local, así que además se contradecían entre ellas. */
+const todayISO = () => {
+    const d = new Date(), p = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
 const nowISO = () => new Date().toISOString();
 const money = (n) => (Number(n) || 0).toLocaleString(LOCALE, { style: "currency", currency: "EUR", maximumFractionDigits: 2 });
 const shortEur = (n) => { n = Number(n) || 0; const a = Math.abs(n); return a >= 1000 ? (n / 1000).toFixed(a >= 10000 ? 0 : 1).replace(".", ",") + "k€" : Math.round(n) + "€"; };
@@ -1395,6 +1373,8 @@ const EMPTY = {
     tienda: [],
     pruebas: [], // evidencias de hábitos cumplidos (foto pequeña, texto o número)
     diario: [], // la nota del día, una por fecha
+    temporadas: [], // bloques de 30 o 90 días con su resultado guardado
+    clanes: [], // clasificación con amigos, por códigos: sin servidor
     // Marcas de borrado: { coleccion: { id: fechaISO } }. Sin esto, al fusionar
     // dos dispositivos lo borrado en uno "revive" desde el otro.
     _tomb: {},
@@ -1453,6 +1433,34 @@ function ingresosDesde(state, desdeISO) {
         const t = Date.parse((x.createdAt || (String(x.date || "") + "T12:00:00")) || "");
         return (!isNaN(t) && t >= t0) ? s + Number(x.amount || 0) : s;
     }, 0);
+}
+/* Nivel global: la suma de todo lo que has hecho, mires el área que mires.
+   Es el número grande de la cabecera del juego. */
+function nivelGlobal(state) {
+    const r = rpgDe(state);
+    const total = Object.values(r.xp || {}).reduce((s, v) => s + Number(v || 0), 0);
+    return { ...nivelDeXp(total), total };
+}
+/* Radiografía de tus áreas: cuánto tienes en cada una, cuál destaca y cuál
+   está pidiendo atención. Es lo que dibuja el radar. */
+function radiografia(state) {
+    const r = rpgDe(state);
+    const areas = (r.areas && r.areas.length) ? r.areas : AREAS_DEFECTO;
+    const filas = areas.map((a) => {
+        const xp = Number((r.xp || {})[a.k] || 0);
+        const n = nivelDeXp(xp);
+        return { ...a, xp, nivel: n.nivel, dentro: n.dentro, paraSiguiente: n.paraSiguiente };
+    });
+    const tope = Math.max(1, ...filas.map((f) => f.xp));
+    const conValor = filas.map((f) => ({ ...f, ratio: f.xp / tope }));
+    const orden = [...conValor].sort((a, b) => b.xp - a.xp);
+    const hayDatos = orden.length > 1 && orden[0].xp > 0;
+    return {
+        filas: conValor,
+        fuerte: hayDatos ? orden[0] : null,
+        flojo: hayDatos ? orden[orden.length - 1] : null,
+        media: conValor.reduce((s, f) => s + f.nivel, 0) / (conValor.length || 1),
+    };
 }
 /* Estado del avatar ahora mismo: si está muerto, cuánto le falta para volver
    y cuánto plazo le queda. */
@@ -2910,7 +2918,7 @@ function HomeScreen({ state, dispatch, go, ai, openMarkets, toast }) {
                     " ",
                     tr("Abrir agenda completa")))),
             homeTab === "vistazo" && (React.createElement(React.Fragment, null,
-                React.createElement(MisionDeHoy, { state: state, dispatch: dispatch, toast: toast, onVerBanco: () => go("cerebro") }),
+                React.createElement(MisionDeHoy, { state: state, dispatch: dispatch, toast: toast, onVerBanco: () => go("juego") }),
                 React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", margin: "0 0 12px" } },
                     React.createElement("h3", { style: { ...sectionH, fontSize: 13.5, margin: 0 } }, tr("Herramientas")),
                     React.createElement("button", { onClick: () => setMasTools((v) => !v), style: { background: "none", border: "none", color: C.yellow, fontWeight: 800, fontSize: 12, cursor: "pointer", padding: 0 } }, masTools ? tr("Menos") : tr("Ver todas"))),
@@ -5128,10 +5136,53 @@ function bestStreak(dates) {
     return best;
 }
 /* ============================================================
+   EL RADAR DE ÁREAS — de un vistazo, en qué destacas y en qué no
+   SVG a pelo, sin librerías: son cuatro fórmulas de trigonometría y pesa cero.
+   El polígono tiene tantos lados como áreas tengas (nueve por defecto), así
+   que si añades o quitas una, se redibuja solo.
+   ============================================================ */
+function RadarAreas({ filas, size = 250 }) {
+    const n = filas.length;
+    if (n < 3)
+        return null;
+    const cx = size / 2, cy = size / 2 + 4;
+    const R = size / 2 - 34; // hueco para las etiquetas
+    const ang = (i) => (Math.PI * 2 * i) / n - Math.PI / 2; // arriba primero
+    const punto = (i, r) => [cx + Math.cos(ang(i)) * R * r, cy + Math.sin(ang(i)) * R * r];
+    const camino = (r) => filas.map((f, i) => punto(i, typeof r === "function" ? r(f) : r).join(",")).join(" ");
+    const anillos = [0.25, 0.5, 0.75, 1];
+    // Suelo del 12 % para que un área a cero siga viéndose y se pueda tocar
+    const relleno = camino((f) => 0.12 + f.ratio * 0.88);
+    return (React.createElement("svg", { viewBox: `0 0 ${size} ${size + 8}`, style: { width: "100%", height: "auto", display: "block", overflow: "visible" } },
+        React.createElement("defs", null,
+            React.createElement("radialGradient", { id: "radarFill", cx: "50%", cy: "50%", r: "50%" },
+                React.createElement("stop", { offset: "0%", stopColor: C.yellow, stopOpacity: "0.55" }),
+                React.createElement("stop", { offset: "100%", stopColor: C.yellow, stopOpacity: "0.16" }))),
+        anillos.map((a, i) => (React.createElement("polygon", { key: i, points: camino(a), fill: "none", stroke: C.line, strokeWidth: i === anillos.length - 1 ? 1.4 : 1, opacity: i === anillos.length - 1 ? 0.9 : 0.45 }))),
+        filas.map((f, i) => {
+            const [x, y] = punto(i, 1);
+            return React.createElement("line", { key: f.k, x1: cx, y1: cy, x2: x, y2: y, stroke: C.line, strokeWidth: "1", opacity: "0.45" });
+        }),
+        React.createElement("polygon", { points: relleno, fill: "url(#radarFill)", stroke: C.yellow, strokeWidth: "2", strokeLinejoin: "round" }),
+        filas.map((f, i) => {
+            const [x, y] = punto(i, 0.12 + f.ratio * 0.88);
+            return React.createElement("circle", { key: f.k, cx: x, cy: y, r: "3.2", fill: C.yellow, stroke: C.ink, strokeWidth: "1.2" });
+        }),
+        filas.map((f, i) => {
+            const [x, y] = punto(i, 1.22);
+            return (React.createElement("g", { key: f.k },
+                React.createElement("text", { x: x, y: y, textAnchor: "middle", dominantBaseline: "middle", style: { fontSize: 15 } }, f.e),
+                React.createElement("text", { x: x, y: y + 13, textAnchor: "middle", dominantBaseline: "middle", style: { fontSize: 8.5, fontWeight: 800, fill: C.textLo, letterSpacing: 0.2 } }, f.nivel)));
+        })));
+}
+/* ============================================================
    PANTALLA DEL AVATAR — el juego de la vida
    ============================================================ */
-function AvatarPanel({ state, dispatch, toast }) {
-    const [sheet, setSheet] = useState(null); // null | 'malo' | 'articulo' | 'areas'
+function AvatarPanel({ state, dispatch, toast, seccion }) {
+    const [sheet, setSheet] = useState(null); // null | 'malo' | 'articulo' | 'areas' | 'reglas'
+    const ver = (k) => !seccion || seccion === k; // sin sección, se ve todo
+    const radio = radiografia(state);
+    const nivelG = nivelGlobal(state);
     const r = rpgEstado(state);
     const malos = state.malos || [];
     const tienda = state.tienda || [];
@@ -5168,10 +5219,12 @@ function AvatarPanel({ state, dispatch, toast }) {
         toast && toast(tr("Disfrútalo, te lo has ganado"), tri("{a} · te quedan {n} monedas", { a: art.nombre, n: (r.coins || 0) - Number(art.precio || 0) }));
     };
     return (React.createElement("div", null,
-        React.createElement("div", { style: { ...card, padding: 18, marginBottom: 12, borderColor: r.muerto ? C.bad : C.line } },
+        ver("avatar") && (React.createElement("div", { style: { ...card, padding: 18, marginBottom: 12, borderColor: r.muerto ? C.bad : C.line } },
             React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 12 } },
-                React.createElement(BeeMark, { size: 46, face: r.muerto ? "sleep" : pctVida > 50 ? "happy" : "neutral" }),
-                React.createElement("div", { style: { flex: 1 } },
+                React.createElement("div", { style: { position: "relative", flexShrink: 0 } },
+                    React.createElement(BeeMark, { size: 46, face: r.muerto ? "sleep" : pctVida > 50 ? "happy" : "neutral" }),
+                    React.createElement("span", { style: { position: "absolute", bottom: -4, right: -6, background: C.yellow, color: C.ink, fontSize: 10, fontWeight: 900, borderRadius: 999, padding: "1px 6px", boxShadow: "0 2px 6px rgba(0,0,0,.4)" } }, tri("Nv {n}", { n: nivelG.nivel }))),
+                React.createElement("div", { style: { flex: 1, minWidth: 0 } },
                     React.createElement("div", { style: { color: C.textHi, fontWeight: 900, fontSize: 17 } }, state.profile.name || tr("Tu avatar")),
                     React.createElement("div", { style: { color: C.textLo, fontSize: 12 } }, r.muerto ? tr("Caído") : tri("{n} de {m} puntos de vida", { n: r.hp, m: r.maxHp || RPG_VIDA_MAX }))),
                 React.createElement("div", { style: { textAlign: "right" } },
@@ -5179,8 +5232,28 @@ function AvatarPanel({ state, dispatch, toast }) {
                     React.createElement("div", { style: { color: C.textLo, fontSize: 10, fontWeight: 700, letterSpacing: 0.6 } }, tr("BROSIN COINS")))),
             React.createElement("div", { style: { height: 14, borderRadius: 999, background: C.rail, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,.3) inset" } },
                 React.createElement("div", { style: { width: `${pctVida}%`, height: "100%", background: `linear-gradient(90deg, ${colVida}, ${colVida}bb)`, borderRadius: 999, transition: "width .5s" } })),
-            (r.vidas || 0) > 0 && (React.createElement("div", { style: { color: C.good, fontSize: 12, fontWeight: 700, marginTop: 8 } }, tri("Tienes {n} vida(s) extra guardada(s)", { n: r.vidas })))),
-        r.muerto && (React.createElement("div", { style: { ...card, padding: 16, marginBottom: 12, borderColor: C.bad, background: "rgba(255,92,92,.08)" } },
+            React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 } },
+                React.createElement("span", { style: { color: C.textLo, fontSize: 11 } }, tri("{n}/{m} XP para el nivel {s}", { n: nivelG.dentro, m: nivelG.paraSiguiente, s: nivelG.nivel + 1 })),
+                (r.vidas || 0) > 0 && React.createElement("span", { style: { color: C.good, fontSize: 11.5, fontWeight: 800 } }, tri("+{n} vida extra", { n: r.vidas }))))),
+        ver("avatar") && (React.createElement("div", { style: { ...card, padding: "16px 14px 12px", marginBottom: 12 } },
+            React.createElement("div", { style: { color: C.textHi, fontWeight: 900, fontSize: 14, marginBottom: 2 } }, tr("Tu forma")),
+            React.createElement("div", { style: { color: C.textLo, fontSize: 11.5, marginBottom: 6 } }, tr("Cuanto más lejos del centro, más nivel tienes en esa área.")),
+            React.createElement(RadarAreas, { filas: radio.filas }),
+            radio.fuerte && radio.flojo && radio.fuerte.k !== radio.flojo.k && (React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 10 } },
+                React.createElement("div", { style: { ...filaDentro(false), flex: 1, padding: "9px 11px" } },
+                    React.createElement("div", { style: { color: C.good, fontSize: 10, fontWeight: 800, letterSpacing: 0.5 } }, tr("DESTACA")),
+                    React.createElement("div", { style: { color: C.textHi, fontWeight: 700, fontSize: 13 } },
+                        radio.fuerte.e,
+                        " ",
+                        tr(radio.fuerte.n))),
+                React.createElement("div", { style: { ...filaDentro(false), flex: 1, padding: "9px 11px" } },
+                    React.createElement("div", { style: { color: C.bad, fontSize: 10, fontWeight: 800, letterSpacing: 0.5 } }, tr("TE PIDE ATENCIÓN")),
+                    React.createElement("div", { style: { color: C.textHi, fontWeight: 700, fontSize: 13 } },
+                        radio.flojo.e,
+                        " ",
+                        tr(radio.flojo.n))))),
+            !radio.fuerte && (React.createElement("div", { style: { color: C.textLo, fontSize: 12, marginTop: 8, lineHeight: 1.45 } }, tr("Cumple hábitos y el radar se irá deformando hacia lo que trabajas. Ahí verás lo que tienes abandonado."))))),
+        r.muerto && ver("avatar") && (React.createElement("div", { style: { ...card, padding: 16, marginBottom: 12, borderColor: C.bad, background: "rgba(255,92,92,.08)" } },
             React.createElement("div", { style: { color: C.bad, fontWeight: 900, fontSize: 15, marginBottom: 6 } }, tr("Tu avatar ha caído")),
             React.createElement("div", { style: { color: C.textHi, fontSize: 13.5, lineHeight: 1.5, marginBottom: 10 } }, tri("Para volver tienes que ganar {n}, del modo que sea, y apuntarlo en Movimientos. La app lo comprueba sola.", { n: money(RPG_META_REVIVIR) })),
             React.createElement("div", { style: { height: 10, borderRadius: 999, background: C.rail, overflow: "hidden", marginBottom: 8 } },
@@ -5197,49 +5270,51 @@ function AvatarPanel({ state, dispatch, toast }) {
                     " ",
                     tr("Revivir ahora"))
                 : React.createElement("div", { style: { color: C.textLo, fontSize: 12 } }, tri("Te faltan {n}", { n: money(r.falta) })))),
-        React.createElement("button", { onClick: () => setSheet("reglas"), style: { ...filaDentro(false), width: "100%", padding: "11px 14px", marginBottom: 14, display: "flex", alignItems: "center", gap: 10, cursor: "pointer", textAlign: "left" } },
+        ver("avatar") && (React.createElement("button", { onClick: () => setSheet("reglas"), style: { ...filaDentro(false), width: "100%", padding: "11px 14px", marginBottom: 14, display: "flex", alignItems: "center", gap: 10, cursor: "pointer", textAlign: "left" } },
             React.createElement("span", { style: { fontSize: 16 } }, "\uD83D\uDCDC"),
             React.createElement("span", { style: { flex: 1, color: C.textHi, fontWeight: 700, fontSize: 13.5 } }, tr("Las reglas del juego")),
-            React.createElement(ChevronRight, { size: 16, color: C.textLo })),
-        React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", margin: "0 0 10px" } },
-            React.createElement("h3", { style: { ...sectionH, fontSize: 13, margin: 0 } }, tr("Tus áreas")),
-            React.createElement("button", { onClick: () => setSheet("areas"), style: { background: "none", border: "none", color: C.yellow, fontWeight: 800, fontSize: 12.5, cursor: "pointer", padding: 0 } }, tr("Editar"))),
-        React.createElement("div", { style: { display: "grid", gap: 8, marginBottom: 16 } }, areas.map((a) => {
-            const xp = Number((r.xp || {})[a.k] || 0);
-            const { nivel, dentro, paraSiguiente } = nivelDeXp(xp);
-            return (React.createElement("div", { key: a.k, style: { ...card, padding: 12, display: "flex", alignItems: "center", gap: 11 } },
-                React.createElement("span", { style: { fontSize: 20 } }, a.e),
+            React.createElement(ChevronRight, { size: 16, color: C.textLo }))),
+        ver("avatar") && (React.createElement(React.Fragment, null,
+            React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", margin: "0 0 10px" } },
+                React.createElement("h3", { style: { ...sectionH, fontSize: 13, margin: 0 } }, tr("Tus áreas")),
+                React.createElement("button", { onClick: () => setSheet("areas"), style: { background: "none", border: "none", color: C.yellow, fontWeight: 800, fontSize: 12.5, cursor: "pointer", padding: 0 } }, tr("Editar"))),
+            React.createElement("div", { style: { display: "grid", gap: 8, marginBottom: 16 } }, areas.map((a) => {
+                const xp = Number((r.xp || {})[a.k] || 0);
+                const { nivel, dentro, paraSiguiente } = nivelDeXp(xp);
+                return (React.createElement("div", { key: a.k, style: { ...card, padding: 12, display: "flex", alignItems: "center", gap: 11 } },
+                    React.createElement("span", { style: { fontSize: 20 } }, a.e),
+                    React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                        React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline" } },
+                            React.createElement("span", { style: { color: C.textHi, fontWeight: 700, fontSize: 13.5 } }, tr(a.n)),
+                            React.createElement("span", { style: { color: C.yellow, fontWeight: 900, fontSize: 12.5 } }, tri("Nv {n}", { n: nivel }))),
+                        React.createElement("div", { style: { height: 6, borderRadius: 999, background: C.rail, overflow: "hidden", marginTop: 5 } },
+                            React.createElement("div", { style: { width: `${(dentro / paraSiguiente) * 100}%`, height: "100%", background: C.yellow, borderRadius: 999 } })))));
+            })))),
+        ver("tienda") && (React.createElement(React.Fragment, null,
+            React.createElement("h3", { style: { ...sectionH, fontSize: 13, margin: "0 0 10px" } }, tr("Lo que te quita vida")),
+            malos.length === 0 ? (React.createElement("div", { style: { ...card, padding: 14, marginBottom: 16, color: C.textLo, fontSize: 12.5, lineHeight: 1.5 } }, tr("Añade los hábitos que te hacen daño y lo que te cuesta cada uno. Cuando caigas, lo apuntas y pierdes esos puntos."))) : (React.createElement("div", { style: { display: "grid", gap: 8, marginBottom: 16 } }, malos.map((m) => (React.createElement("div", { key: m.id, style: { ...card, padding: 12, display: "flex", alignItems: "center", gap: 10 } },
                 React.createElement("div", { style: { flex: 1, minWidth: 0 } },
-                    React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline" } },
-                        React.createElement("span", { style: { color: C.textHi, fontWeight: 700, fontSize: 13.5 } }, tr(a.n)),
-                        React.createElement("span", { style: { color: C.yellow, fontWeight: 900, fontSize: 12.5 } }, tri("Nv {n}", { n: nivel }))),
-                    React.createElement("div", { style: { height: 6, borderRadius: 999, background: C.rail, overflow: "hidden", marginTop: 5 } },
-                        React.createElement("div", { style: { width: `${(dentro / paraSiguiente) * 100}%`, height: "100%", background: C.yellow, borderRadius: 999 } })))));
-        })),
-        React.createElement("h3", { style: { ...sectionH, fontSize: 13, margin: "0 0 10px" } }, tr("Lo que te quita vida")),
-        malos.length === 0 ? (React.createElement("div", { style: { ...card, padding: 14, marginBottom: 16, color: C.textLo, fontSize: 12.5, lineHeight: 1.5 } }, tr("Añade los hábitos que te hacen daño y lo que te cuesta cada uno. Cuando caigas, lo apuntas y pierdes esos puntos."))) : (React.createElement("div", { style: { display: "grid", gap: 8, marginBottom: 16 } }, malos.map((m) => (React.createElement("div", { key: m.id, style: { ...card, padding: 12, display: "flex", alignItems: "center", gap: 10 } },
-            React.createElement("div", { style: { flex: 1, minWidth: 0 } },
-                React.createElement("div", { style: { color: C.textHi, fontWeight: 700, fontSize: 13.5 } }, m.nombre),
-                React.createElement("div", { style: { color: C.bad, fontSize: 11.5, fontWeight: 700 } }, tri("−{n} de vida", { n: m.coste }))),
-            React.createElement("button", { onClick: () => caer(m), disabled: r.muerto, style: { ...miniBtn("rgba(255,92,92,.18)", C.bad), flex: "0 0 auto", padding: "8px 12px" } }, tr("He caído")),
-            React.createElement("button", { onClick: () => dispatch({ type: "remove", col: "malos", id: m.id }), style: { ...iconBtn, width: 32, height: 32, color: C.textLo } },
-                React.createElement(Trash2, { size: 13 }))))))),
-        React.createElement("h3", { style: { ...sectionH, fontSize: 13, margin: "0 0 4px" } }, tr("La tiendita")),
-        React.createElement("div", { style: { color: C.textLo, fontSize: 11.5, marginBottom: 10, lineHeight: 1.45 } }, tr("Aquí te das el capricho sin perder vida: lo pagas con lo que has ganado portándote bien.")),
-        tienda.length === 0 ? (React.createElement("div", { style: { ...card, padding: 14, marginBottom: 12, color: C.textLo, fontSize: 12.5 } }, tr("Todavía no has puesto nada a la venta. Ej.: una cerveza por 200 monedas."))) : (React.createElement("div", { style: { display: "grid", gap: 8, marginBottom: 12 } }, tienda.map((art) => {
-            const puedo = (r.coins || 0) >= Number(art.precio || 0);
-            return (React.createElement("div", { key: art.id, style: { ...card, padding: 12, display: "flex", alignItems: "center", gap: 10, opacity: puedo ? 1 : 0.55 } },
-                React.createElement("span", { style: { fontSize: 19 } }, art.emoji || "🎁"),
-                React.createElement("div", { style: { flex: 1, minWidth: 0 } },
-                    React.createElement("div", { style: { color: C.textHi, fontWeight: 700, fontSize: 13.5 } }, art.nombre),
-                    React.createElement("div", { style: { color: C.yellow, fontSize: 11.5, fontWeight: 800 } }, tri("{n} monedas", { n: art.precio }))),
-                React.createElement("button", { onClick: () => comprar(art), disabled: !puedo, style: { ...miniBtn(puedo ? C.yellow : C.ink3, puedo ? C.ink : C.textLo), flex: "0 0 auto", padding: "8px 14px" } }, tr("Comprar")),
-                React.createElement("button", { onClick: () => dispatch({ type: "remove", col: "tienda", id: art.id }), style: { ...iconBtn, width: 32, height: 32, color: C.textLo } },
-                    React.createElement(Trash2, { size: 13 }))));
-        }))),
-        React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
-            React.createElement("button", { onClick: () => setSheet("malo"), style: miniBtn(C.ink3, C.textHi) }, tr("+ Mal hábito")),
-            React.createElement("button", { onClick: () => setSheet("articulo"), style: miniBtn(C.ink3, C.textHi) }, tr("+ Artículo"))),
+                    React.createElement("div", { style: { color: C.textHi, fontWeight: 700, fontSize: 13.5 } }, m.nombre),
+                    React.createElement("div", { style: { color: C.bad, fontSize: 11.5, fontWeight: 700 } }, tri("−{n} de vida", { n: m.coste }))),
+                React.createElement("button", { onClick: () => caer(m), disabled: r.muerto, style: { ...miniBtn("rgba(255,92,92,.18)", C.bad), flex: "0 0 auto", padding: "8px 12px" } }, tr("He caído")),
+                React.createElement("button", { onClick: () => dispatch({ type: "remove", col: "malos", id: m.id }), style: { ...iconBtn, width: 32, height: 32, color: C.textLo } },
+                    React.createElement(Trash2, { size: 13 }))))))),
+            React.createElement("h3", { style: { ...sectionH, fontSize: 13, margin: "0 0 4px" } }, tr("La tiendita")),
+            React.createElement("div", { style: { color: C.textLo, fontSize: 11.5, marginBottom: 10, lineHeight: 1.45 } }, tr("Aquí te das el capricho sin perder vida: lo pagas con lo que has ganado portándote bien.")),
+            tienda.length === 0 ? (React.createElement("div", { style: { ...card, padding: 14, marginBottom: 12, color: C.textLo, fontSize: 12.5 } }, tr("Todavía no has puesto nada a la venta. Ej.: una cerveza por 200 monedas."))) : (React.createElement("div", { style: { display: "grid", gap: 8, marginBottom: 12 } }, tienda.map((art) => {
+                const puedo = (r.coins || 0) >= Number(art.precio || 0);
+                return (React.createElement("div", { key: art.id, style: { ...card, padding: 12, display: "flex", alignItems: "center", gap: 10, opacity: puedo ? 1 : 0.55 } },
+                    React.createElement("span", { style: { fontSize: 19 } }, art.emoji || "🎁"),
+                    React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                        React.createElement("div", { style: { color: C.textHi, fontWeight: 700, fontSize: 13.5 } }, art.nombre),
+                        React.createElement("div", { style: { color: C.yellow, fontSize: 11.5, fontWeight: 800 } }, tri("{n} monedas", { n: art.precio }))),
+                    React.createElement("button", { onClick: () => comprar(art), disabled: !puedo, style: { ...miniBtn(puedo ? C.yellow : C.ink3, puedo ? C.ink : C.textLo), flex: "0 0 auto", padding: "8px 14px" } }, tr("Comprar")),
+                    React.createElement("button", { onClick: () => dispatch({ type: "remove", col: "tienda", id: art.id }), style: { ...iconBtn, width: 32, height: 32, color: C.textLo } },
+                        React.createElement(Trash2, { size: 13 }))));
+            }))),
+            React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
+                React.createElement("button", { onClick: () => setSheet("malo"), style: miniBtn(C.ink3, C.textHi) }, tr("+ Mal hábito")),
+                React.createElement("button", { onClick: () => setSheet("articulo"), style: miniBtn(C.ink3, C.textHi) }, tr("+ Artículo"))))),
         React.createElement("div", { style: { height: 100 } }),
         React.createElement(Sheet, { open: sheet === "reglas", onClose: () => setSheet(null), title: tr("Las reglas del juego") },
             React.createElement(Reglamento, null)),
@@ -5249,6 +5324,271 @@ function AvatarPanel({ state, dispatch, toast }) {
             React.createElement(NombrePrecioForm, { etiqueta: tr("¿Qué te quita vida?"), sugerencia: tr("Ej. Fumar, pedir comida a domicilio…"), etiquetaNum: tr("Puntos de vida que cuesta"), porDefecto: 100, onSave: (d) => { dispatch({ type: "add", col: "malos", item: { id: uid(), nombre: d.nombre, coste: d.valor } }); setSheet(null); } })),
         React.createElement(Sheet, { open: sheet === "articulo", onClose: () => setSheet(null), title: tr("Nuevo artículo de la tienda") },
             React.createElement(NombrePrecioForm, { etiqueta: tr("¿Qué capricho?"), sugerencia: tr("Ej. Una cerveza, una peli, dormir hasta tarde…"), etiquetaNum: tr("Precio en monedas"), porDefecto: 200, conEmoji: true, onSave: (d) => { dispatch({ type: "add", col: "tienda", item: { id: uid(), nombre: d.nombre, precio: d.valor, emoji: d.emoji } }); setSheet(null); } }))));
+}
+/* ============================================================
+   EL JUEGO — su propia pestaña abajo
+   ============================================================ */
+function GameScreen({ state, dispatch, toast, ai }) {
+    const [tab, setTab] = useState("avatar");
+    const temp = temporadaDe(state);
+    return (React.createElement("div", { style: { padding: "20px 18px 0" } },
+        React.createElement(Title, { kicker: tr("Tu vida, jugada") }, tr("Juego")),
+        React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 16, overflowX: "auto", paddingBottom: 4, WebkitOverflowScrolling: "touch" } },
+            React.createElement(Chip, { active: tab === "avatar", onClick: () => setTab("avatar") }, tr("Avatar")),
+            React.createElement(Chip, { active: tab === "mision", onClick: () => setTab("mision") }, tr("Misión")),
+            React.createElement(Chip, { active: tab === "habitos", onClick: () => setTab("habitos") }, tr("Hábitos")),
+            React.createElement(Chip, { active: tab === "tienda", onClick: () => setTab("tienda") }, tr("Tienda")),
+            React.createElement(Chip, { active: tab === "temporada", onClick: () => setTab("temporada") }, tr("Temporada")),
+            React.createElement(Chip, { active: tab === "clan", onClick: () => setTab("clan") }, tr("Clan")),
+            React.createElement(Chip, { active: tab === "retos", onClick: () => setTab("retos") }, tr("Retos"))),
+        temp && tab !== "temporada" && (React.createElement("button", { onClick: () => setTab("temporada"), style: { ...filaDentro(false), width: "100%", padding: "9px 12px", marginBottom: 14, display: "flex", alignItems: "center", gap: 9, cursor: "pointer", textAlign: "left" } },
+            React.createElement("span", { style: { fontSize: 14 } }, "\uD83C\uDFC1"),
+            React.createElement("span", { style: { flex: 1, color: C.textHi, fontWeight: 700, fontSize: 12.5 } }, temp.nombre),
+            React.createElement("span", { style: { color: temp.diasRestantes <= 3 ? C.bad : C.yellow, fontWeight: 800, fontSize: 12 } }, temp.diasRestantes === 1 ? tr("último día") : tri("{n} días", { n: temp.diasRestantes })))),
+        tab === "avatar" && React.createElement(AvatarPanel, { state: state, dispatch: dispatch, toast: toast, seccion: "avatar" }),
+        tab === "tienda" && React.createElement(AvatarPanel, { state: state, dispatch: dispatch, toast: toast, seccion: "tienda" }),
+        tab === "mision" && React.createElement(React.Fragment, null,
+            React.createElement(MisionDeHoy, { state: state, dispatch: dispatch, toast: toast, onVerBanco: () => setTab("habitos") }),
+            React.createElement("div", { style: { height: 100 } })),
+        tab === "habitos" && React.createElement(HabitsPanel, { state: state, dispatch: dispatch, toast: toast }),
+        tab === "temporada" && React.createElement(TemporadaPanel, { state: state, dispatch: dispatch, toast: toast }),
+        tab === "clan" && React.createElement(ClanPanel, { state: state, dispatch: dispatch, toast: toast }),
+        tab === "retos" && React.createElement(ChallengesPanelSuelto, { state: state, dispatch: dispatch })));
+}
+/* El banco de hábitos con su propio botón de crear (antes vivía en Cerebro) */
+function HabitsPanel({ state, dispatch, toast }) {
+    const [sheet, setSheet] = useState(false);
+    return (React.createElement("div", null,
+        React.createElement(HabitsList, { habits: state.habits, dispatch: dispatch, state: state, toast: toast, onAdd: () => setSheet(true) }),
+        React.createElement("div", { style: { height: 122 } }),
+        React.createElement(FAB, { onClick: () => setSheet(true), label: tr("Hábito") }),
+        React.createElement(Sheet, { open: sheet, onClose: () => setSheet(false), title: tr("Nuevo hábito") },
+            React.createElement(HabitForm, { areas: rpgDe(state).areas, onSave: (d) => { dispatch({ type: "add", col: "habits", item: { id: uid(), done: [], ...d } }); setSheet(false); } }))));
+}
+function ChallengesPanelSuelto({ state, dispatch }) {
+    const [sheet, setSheet] = useState(false);
+    return (React.createElement("div", null,
+        React.createElement(ChallengesPanel, { state: state, dispatch: dispatch, onAdd: () => setSheet(true) }),
+        React.createElement("div", { style: { height: 122 } }),
+        React.createElement(FAB, { onClick: () => setSheet(true), label: tr("Reto") }),
+        React.createElement(Sheet, { open: sheet, onClose: () => setSheet(false), title: tr("Nuevo reto con amigos") },
+            React.createElement(ChallengeForm, { onSave: (d) => { dispatch({ type: "add", col: "challenges", item: { id: uid(), ...d } }); setSheet(false); } }))));
+}
+/* ============================================================
+   TEMPORADAS — un principio y un final
+   Una racha infinita no motiva: no se gana nunca. Una temporada de 30 o 90
+   días sí, porque tiene meta. Al cerrarla se guarda el resultado y el XP se
+   queda donde está: lo que has aprendido no se borra, solo empieza otra cuenta.
+   ============================================================ */
+const TEMP_DURACIONES = [
+    { k: 30, n: "30 días", d: "Un mes. Para probar algo nuevo." },
+    { k: 90, n: "90 días", d: "Un trimestre. Aquí cambian las cosas de verdad." },
+];
+const diasEntre = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
+function temporadaDe(state) {
+    const t = (state.temporadas || []).find((x) => !x.cerrada);
+    if (!t)
+        return null;
+    const hoy = todayISO();
+    const total = Number(t.dias || 30);
+    const pasados = Math.max(0, diasEntre(t.inicio, hoy));
+    return { ...t, total, pasados, diasRestantes: Math.max(0, total - pasados), pct: Math.min(100, (pasados / total) * 100), acabada: pasados >= total };
+}
+function TemporadaPanel({ state, dispatch, toast }) {
+    const [sheet, setSheet] = useState(false);
+    const t = temporadaDe(state);
+    const hist = (state.temporadas || []).filter((x) => x.cerrada).sort((a, b) => (b.fin || "").localeCompare(a.fin || ""));
+    const r = rpgDe(state);
+    const cerrar = () => {
+        if (!t)
+            return;
+        const marca = { cerrada: true, fin: todayISO(), nivelFin: nivelGlobal(state).nivel, coinsFin: r.coins || 0, xpFin: Object.values(r.xp || {}).reduce((s, v) => s + Number(v || 0), 0) };
+        dispatch({ type: "update", col: "temporadas", id: t.id, patch: marca });
+        toast && toast(tr("Temporada cerrada"), tri("Acabaste en nivel {n}. El XP se queda contigo.", { n: marca.nivelFin }));
+    };
+    const abrir = (dias, nombre) => {
+        const g = nivelGlobal(state);
+        dispatch({ type: "add", col: "temporadas", item: { id: uid(), nombre: nombre.trim(), dias, inicio: todayISO(), cerrada: false, nivelIni: g.nivel, xpIni: g.total, coinsIni: r.coins || 0 } });
+        setSheet(false);
+    };
+    return (React.createElement("div", null,
+        t ? (React.createElement("div", { style: { ...card, padding: 16, marginBottom: 14 } },
+            React.createElement("div", { style: { display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 } },
+                React.createElement("span", { style: { color: C.textHi, fontWeight: 900, fontSize: 16 } }, t.nombre),
+                React.createElement("span", { style: { color: t.diasRestantes <= 3 ? C.bad : C.yellow, fontWeight: 900, fontSize: 13 } }, t.acabada ? tr("Terminada") : t.diasRestantes === 1 ? tr("Último día") : tri("Quedan {n} días", { n: t.diasRestantes }))),
+            React.createElement("div", { style: { height: 10, borderRadius: 999, background: C.rail, overflow: "hidden", marginBottom: 8 } },
+                React.createElement("div", { style: { width: `${t.pct}%`, height: "100%", background: t.acabada ? C.good : C.yellow, borderRadius: 999, transition: "width .4s" } })),
+            React.createElement("div", { style: { color: C.textLo, fontSize: 11.5, marginBottom: 12 } }, tri("Día {n} de {m}", { n: Math.min(t.pasados + 1, t.total), m: t.total })),
+            React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
+                React.createElement("div", { style: { ...filaDentro(false), flex: 1, padding: "9px 11px" } },
+                    React.createElement("div", { style: { color: C.textLo, fontSize: 10, fontWeight: 800, letterSpacing: 0.5 } }, tr("NIVEL")),
+                    React.createElement("div", { style: { color: C.textHi, fontWeight: 900, fontSize: 15 } },
+                        t.nivelIni,
+                        " \u2192 ",
+                        nivelGlobal(state).nivel)),
+                React.createElement("div", { style: { ...filaDentro(false), flex: 1, padding: "9px 11px" } },
+                    React.createElement("div", { style: { color: C.textLo, fontSize: 10, fontWeight: 800, letterSpacing: 0.5 } }, tr("XP GANADO")),
+                    React.createElement("div", { style: { color: C.yellow, fontWeight: 900, fontSize: 15 } },
+                        "+",
+                        Math.max(0, nivelGlobal(state).total - Number(t.xpIni || 0))))),
+            React.createElement(PrimaryBtn, { full: true, color: t.acabada ? C.good : C.ink3, onClick: cerrar },
+                React.createElement(Check, { size: 18, strokeWidth: 3 }),
+                " ",
+                t.acabada ? tr("Cerrar y guardar el resultado") : tr("Cerrarla antes de tiempo")))) : (React.createElement("div", { style: { ...card, padding: 18, marginBottom: 14, textAlign: "center" } },
+            React.createElement("div", { style: { fontSize: 30, marginBottom: 6 } }, "\uD83C\uDFC1"),
+            React.createElement("div", { style: { color: C.textHi, fontWeight: 900, fontSize: 16, marginBottom: 5 } }, tr("Sin temporada abierta")),
+            React.createElement("div", { style: { color: C.textLo, fontSize: 13, lineHeight: 1.5, marginBottom: 14 } }, tr("Una racha infinita no se gana nunca. Ponle fecha de final y verás la diferencia.")),
+            React.createElement(PrimaryBtn, { full: true, onClick: () => setSheet(true) },
+                React.createElement(Plus, { size: 17, strokeWidth: 3 }),
+                " ",
+                tr("Empezar temporada")))),
+        hist.length > 0 && (React.createElement(React.Fragment, null,
+            React.createElement("h3", { style: { ...sectionH, fontSize: 13, margin: "0 0 10px" } }, tr("Temporadas cerradas")),
+            React.createElement("div", { style: { display: "grid", gap: 8, marginBottom: 14 } }, hist.map((h) => (React.createElement("div", { key: h.id, style: { ...card, padding: 13, display: "flex", alignItems: "center", gap: 11 } },
+                React.createElement("span", { style: { fontSize: 17 } }, "\uD83C\uDFC6"),
+                React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                    React.createElement("div", { style: { color: C.textHi, fontWeight: 700, fontSize: 13.5 } }, h.nombre),
+                    React.createElement("div", { style: { color: C.textLo, fontSize: 11.5 } },
+                        fmtDate(h.inicio),
+                        " \u2192 ",
+                        fmtDate(h.fin))),
+                React.createElement("div", { style: { textAlign: "right" } },
+                    React.createElement("div", { style: { color: C.yellow, fontWeight: 900, fontSize: 13 } }, tri("Nv {n}", { n: h.nivelFin || h.nivelIni || 1 })),
+                    React.createElement("div", { style: { color: C.good, fontSize: 11, fontWeight: 700 } },
+                        "+",
+                        Math.max(0, Number(h.xpFin || 0) - Number(h.xpIni || 0)),
+                        " XP")))))))),
+        React.createElement("div", { style: { height: 100 } }),
+        React.createElement(Sheet, { open: sheet, onClose: () => setSheet(false), title: tr("Nueva temporada") },
+            React.createElement(TemporadaForm, { onSave: abrir }))));
+}
+function TemporadaForm({ onSave }) {
+    const [nombre, setNombre] = useState("");
+    const [dias, setDias] = useState(30);
+    return (React.createElement("div", null,
+        React.createElement(Field, { label: tr("¿Cómo la llamas?") },
+            React.createElement("input", { style: inputStyle, value: nombre, onChange: (e) => setNombre(e.target.value), placeholder: tr("Ej. Verano en forma, Ahorrar para el coche…"), autoFocus: true })),
+        React.createElement(Field, { label: tr("¿Cuánto dura?") },
+            React.createElement("div", { style: { display: "grid", gap: 8 } }, TEMP_DURACIONES.map((d) => (React.createElement("button", { key: d.k, onClick: () => setDias(d.k), style: { ...filaDentro(dias === d.k, C.yellow), padding: "11px 13px", cursor: "pointer", textAlign: "left" } },
+                React.createElement("div", { style: { color: C.textHi, fontWeight: 800, fontSize: 14 } }, tr(d.n)),
+                React.createElement("div", { style: { color: C.textLo, fontSize: 12 } }, tr(d.d))))))),
+        React.createElement(PrimaryBtn, { full: true, onClick: () => nombre.trim() && onSave(dias, nombre) },
+            React.createElement(Check, { size: 18, strokeWidth: 3 }),
+            " ",
+            tr("Empezar"))));
+}
+/* ============================================================
+   CLAN Y CLASIFICACIÓN — competir sin montar un servidor
+   Aquí no hay backend: cada uno genera su CARTA (un código) y la pasa por
+   WhatsApp. Al pegarla, entra en la clasificación del clan. Es exactamente el
+   mismo truco que ya usan los Grupos de gastos, y tiene una ventaja seria: los
+   datos de tus amigos no viven en ningún servidor mío.
+   El bote es en Brosin Coins, nunca en euros: un bote con dinero real es juego
+   de azar y necesita licencia. Eso es una conversación para el gestor.
+   ============================================================ */
+function miCarta(state) {
+    const g = nivelGlobal(state);
+    const r = rpgDe(state);
+    const rachas = (state.habits || []).map((h) => streakOf(new Set(h.done || [])));
+    return {
+        id: state.profile.deviceId || (state.profile.name || "yo"),
+        nombre: state.profile.name || tr("Yo"),
+        nivel: g.nivel, xp: g.total, coins: r.coins || 0,
+        racha: rachas.length ? Math.max(...rachas) : 0,
+        at: nowISO(),
+    };
+}
+function ClanPanel({ state, dispatch, toast }) {
+    const [sheet, setSheet] = useState(null); // 'nuevo' | 'pegar' | 'carta'
+    const clan = (state.clanes || [])[0] || null;
+    const yo = miCarta(state);
+    const gente = clan ? [yo, ...(clan.miembros || []).filter((m) => m.id !== yo.id)] : [yo];
+    const tabla = [...gente].sort((a, b) => (b.nivel - a.nivel) || (b.xp - a.xp) || (b.racha - a.racha));
+    const bote = tabla.reduce((s, m) => s + Number(m.apuesta || 0), 0);
+    const pegar = (code) => {
+        let obj = null;
+        try {
+            obj = decodeShare(code);
+        }
+        catch (e) { }
+        if (!obj || obj.kind !== "brosin-carta" || !obj.carta) {
+            toast && toast("✗", tr("Ese código no es una carta de Brosin"));
+            return;
+        }
+        if (!clan) {
+            toast && toast("✗", tr("Crea tu clan primero"));
+            return;
+        }
+        const otros = (clan.miembros || []).filter((m) => m.id !== obj.carta.id);
+        dispatch({ type: "update", col: "clanes", id: clan.id, patch: { miembros: [...otros, obj.carta] } });
+        setSheet(null);
+        toast && toast(tr("Dentro del clan"), tri("{n} ya está en la clasificación.", { n: obj.carta.nombre }));
+    };
+    return (React.createElement("div", null,
+        !clan ? (React.createElement("div", { style: { ...card, padding: 18, marginBottom: 14, textAlign: "center" } },
+            React.createElement("div", { style: { fontSize: 30, marginBottom: 6 } }, "\uD83D\uDEE1\uFE0F"),
+            React.createElement("div", { style: { color: C.textHi, fontWeight: 900, fontSize: 16, marginBottom: 5 } }, tr("Sin clan")),
+            React.createElement("div", { style: { color: C.textLo, fontSize: 13, lineHeight: 1.5, marginBottom: 14 } }, tr("Monta un clan con tus colegas: cada uno pasa su carta y veis quién va por delante. Sin servidor, sin cuentas, sin que nadie guarde vuestros datos.")),
+            React.createElement(PrimaryBtn, { full: true, onClick: () => setSheet("nuevo") },
+                React.createElement(Plus, { size: 17, strokeWidth: 3 }),
+                " ",
+                tr("Crear clan")))) : (React.createElement(React.Fragment, null,
+            React.createElement("div", { style: { ...card, padding: 16, marginBottom: 12 } },
+                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 4 } },
+                    React.createElement("span", { style: { fontSize: 20 } }, "\uD83D\uDEE1\uFE0F"),
+                    React.createElement("span", { style: { flex: 1, color: C.textHi, fontWeight: 900, fontSize: 16 } }, clan.nombre),
+                    React.createElement("button", { onClick: () => dispatch({ type: "remove", col: "clanes", id: clan.id }), style: { ...iconBtn, width: 30, height: 30, color: C.textLo } },
+                        React.createElement(Trash2, { size: 13 }))),
+                React.createElement("div", { style: { color: C.textLo, fontSize: 12 } },
+                    tri("{n} en la clasificación", { n: tabla.length }),
+                    bote > 0 ? tri(" · bote de {b} monedas", { b: bote }) : "")),
+            React.createElement("div", { style: { display: "grid", gap: 8, marginBottom: 12 } }, tabla.map((m, i) => {
+                const soyYo = m.id === yo.id;
+                const medalla = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : String(i + 1);
+                return (React.createElement("div", { key: m.id + i, style: { ...filaDentro(soyYo, C.yellow), padding: "11px 13px", display: "flex", alignItems: "center", gap: 11 } },
+                    React.createElement("span", { style: { width: 24, textAlign: "center", fontSize: i < 3 ? 17 : 13, fontWeight: 900, color: C.textLo } }, medalla),
+                    React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                        React.createElement("div", { style: { color: C.textHi, fontWeight: soyYo ? 900 : 700, fontSize: 14 } },
+                            m.nombre,
+                            soyYo ? tr(" (tú)") : ""),
+                        React.createElement("div", { style: { color: C.textLo, fontSize: 11.5 } }, tri("{x} XP · racha de {r}", { x: m.xp, r: m.racha }))),
+                    React.createElement("span", { style: { color: C.yellow, fontWeight: 900, fontSize: 13.5 } }, tri("Nv {n}", { n: m.nivel }))));
+            })),
+            React.createElement("div", { style: { color: C.textLo, fontSize: 11.5, lineHeight: 1.45, marginBottom: 12 } }, tr("Las cartas son una foto del momento: pídeles una nueva de vez en cuando para que la clasificación esté al día.")),
+            React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 12 } },
+                React.createElement("button", { onClick: () => setSheet("carta"), style: miniBtn(C.yellow, C.ink) }, tr("Mi carta")),
+                React.createElement("button", { onClick: () => setSheet("pegar"), style: miniBtn(C.ink3, C.textHi) }, tr("Pegar una carta"))))),
+        React.createElement("div", { style: { height: 100 } }),
+        React.createElement(Sheet, { open: sheet === "nuevo", onClose: () => setSheet(null), title: tr("Nuevo clan") },
+            React.createElement(SimpleNameForm, { placeholder: tr("Ej. Los de siempre"), onSave: (nombre) => { dispatch({ type: "add", col: "clanes", item: { id: uid(), nombre, miembros: [] } }); setSheet(null); } })),
+        React.createElement(Sheet, { open: sheet === "carta", onClose: () => setSheet(null), title: tr("Tu carta") },
+            React.createElement(CartaPanel, { carta: yo, toast: toast })),
+        React.createElement(Sheet, { open: sheet === "pegar", onClose: () => setSheet(null), title: tr("Pegar la carta de un amigo") },
+            React.createElement(ImportGroupForm, { onImport: pegar }))));
+}
+function CartaPanel({ carta, toast }) {
+    const code = encodeShare({ kind: "brosin-carta", v: 1, carta });
+    const [copiado, setCopiado] = useState(false);
+    const copiar = () => { try {
+        navigator.clipboard && navigator.clipboard.writeText(code);
+        setCopiado(true);
+        setTimeout(() => setCopiado(false), 2000);
+    }
+    catch (e) { } };
+    return (React.createElement("div", null,
+        React.createElement("div", { style: { ...card, padding: 16, marginBottom: 12, textAlign: "center" } },
+            React.createElement("div", { style: { color: C.textHi, fontWeight: 900, fontSize: 18 } }, carta.nombre),
+            React.createElement("div", { style: { color: C.yellow, fontWeight: 900, fontSize: 26, margin: "4px 0" } }, tri("Nv {n}", { n: carta.nivel })),
+            React.createElement("div", { style: { color: C.textLo, fontSize: 12.5 } }, tri("{x} XP · racha de {r} · {c} monedas", { x: carta.xp, r: carta.racha, c: carta.coins }))),
+        React.createElement("div", { style: { ...card, padding: 12, background: C.well, maxHeight: 120, overflow: "auto", marginBottom: 12 } },
+            React.createElement("code", { style: { color: C.yellow, fontSize: 11, wordBreak: "break-all", fontFamily: "monospace" } }, code)),
+        React.createElement(PrimaryBtn, { full: true, onClick: copiar }, copiado ? React.createElement(React.Fragment, null,
+            React.createElement(Check, { size: 18, strokeWidth: 3 }),
+            " ",
+            tr("Copiado")) : React.createElement(React.Fragment, null,
+            React.createElement(Copy, { size: 18 }),
+            " ",
+            tr("Copiar y mandar")))));
 }
 /* El reglamento. Un juego sin reglas escritas no es un juego, es un capricho.
    Aquí están las seis que hay, en cristiano. */
@@ -6348,14 +6688,8 @@ function BrainScreen({ state, dispatch, ai, toast }) {
                 React.createElement(Sparkles, { size: 20, color: "#fff" })))),
         React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 16, overflowX: "auto", paddingBottom: 4 } },
             React.createElement(Chip, { active: tab === "objetivos", onClick: () => setTab("objetivos"), accent: C.purple }, tr("Objetivos")),
-            React.createElement(Chip, { active: tab === "habitos", onClick: () => setTab("habitos"), accent: C.purple }, tr("Hábitos")),
-            React.createElement(Chip, { active: tab === "avatar", onClick: () => setTab("avatar"), accent: C.purple }, tr("Avatar")),
-            React.createElement(Chip, { active: tab === "retos", onClick: () => setTab("retos"), accent: C.purple }, tr("Retos")),
             React.createElement(Chip, { active: tab === "notas", onClick: () => setTab("notas"), accent: C.purple }, tr("Notas"))),
         tab === "objetivos" && (state.goals.length === 0 ? (React.createElement(EmptyState, { face: "happy", title: tr("¿Hacia dónde vas?"), sub: tr("Define objetivos y divídelos en pasos. Brosin te lleva paso a paso."), cta: tr("Nuevo objetivo"), onCta: () => setSheet("goal") })) : (React.createElement("div", { className: "bstagger", style: { display: "grid", gap: 12 } }, state.goals.map((g) => React.createElement(GoalCard, { key: g.id, g: g, dispatch: dispatch, onEdit: () => { setEditGoal(g); setSheet("goal"); } }))))),
-        tab === "habitos" && (React.createElement(HabitsList, { habits: state.habits, dispatch: dispatch, onAdd: () => setSheet("habit"), state: state, toast: toast })),
-        tab === "avatar" && React.createElement(AvatarPanel, { state: state, dispatch: dispatch, toast: toast }),
-        tab === "retos" && (React.createElement(ChallengesPanel, { state: state, dispatch: dispatch, onAdd: () => setSheet("challenge") })),
         tab === "notas" && (state.notes.length === 0 ? (React.createElement(EmptyState, { face: "neutral", title: tr("Bóveda vacía"), sub: tr("Guarda aquí información valiosa: claves, ideas, lo que no quieres perder."), cta: tr("Nueva nota"), onCta: () => setSheet("note") })) : (React.createElement("div", { className: "bstagger", style: { display: "grid", gap: 10 } }, [...state.notes].sort((a, b) => Number(b.pinned) - Number(a.pinned)).map((n) => (React.createElement("div", { key: n.id, style: { ...card, padding: 14, borderColor: n.pinned ? C.purple : C.line } },
             React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 } },
                 React.createElement("div", { style: { color: C.textHi, fontWeight: 800, fontSize: 15 } }, n.title),
@@ -6368,7 +6702,7 @@ function BrainScreen({ state, dispatch, ai, toast }) {
             n.photo && React.createElement("div", { style: { marginTop: 10 } },
                 React.createElement(Thumb, { src: n.photo, size: 64, radius: 12 })))))))),
         React.createElement("div", { style: { height: 122 } }),
-        tab !== "avatar" && React.createElement(FAB, { onClick: () => { setEditGoal(null); setSheet(tab === "notas" ? "note" : tab === "habitos" ? "habit" : tab === "retos" ? "challenge" : "goal"); }, label: tab === "notas" ? tr("Nota") : tab === "habitos" ? tr("Hábito") : tab === "retos" ? tr("Reto") : tr("Objetivo") }),
+        React.createElement(FAB, { onClick: () => { setEditGoal(null); setSheet(tab === "notas" ? "note" : "goal"); }, label: tab === "notas" ? tr("Nota") : tr("Objetivo") }),
         React.createElement(Sheet, { open: sheet === "goal", onClose: () => { setSheet(null); setEditGoal(null); }, title: editGoal ? "Editar objetivo" : "Nuevo objetivo" },
             React.createElement(GoalForm, { initial: editGoal, onSave: (d) => { if (editGoal)
                     dispatch({ type: "update", col: "goals", id: editGoal.id, patch: d });
@@ -7795,6 +8129,7 @@ function TabBar({ active, onChange, ai }) {
         { key: "home", label: tr("Hoy"), icon: Home },
         { key: "agenda", label: tr("Agenda"), icon: CalendarDays },
         { key: "dinero", label: tr("Dinero"), icon: Wallet },
+        { key: "juego", label: tr("Juego"), icon: Flag },
         { key: "cerebro", label: tr("Vida"), icon: Brain },
     ];
     return (React.createElement("div", { style: { position: "absolute", bottom: 0, left: 0, right: 0, minHeight: 72, paddingBottom: "env(safe-area-inset-bottom)", background: C.glass, backdropFilter: "blur(20px) saturate(1.6)", WebkitBackdropFilter: "blur(20px) saturate(1.6)", borderTop: `1px solid ${C.edge}`, boxShadow: `0 1px 0 rgba(255,255,255,.04) inset, 0 -14px 34px ${C.dropSheet}`, display: "flex", zIndex: 40 } }, tabs.map((t) => {
@@ -8476,6 +8811,7 @@ function BrosinOS() {
                 tab === "agenda" && React.createElement(AgendaScreen, { state: state, dispatch: dispatch }),
                 tab === "dinero" && React.createElement(MoneyScreen, { state: state, dispatch: dispatch, tab: moneyTab, setTab: setMoneyTab, toast: pushToast, ai: ai }),
                 tab === "coleccion" && React.createElement(MoneyScreen, { state: state, dispatch: dispatch, tab: "colecciones", setTab: (t) => { setMoneyTab(t); setTab("dinero"); }, toast: pushToast, ai: ai }),
+                tab === "juego" && React.createElement(GameScreen, { state: state, dispatch: dispatch, toast: pushToast, ai: ai }),
                 tab === "cerebro" && React.createElement(BrainScreen, { state: state, dispatch: dispatch, ai: ai, toast: pushToast }),
                 tab === "camara" && React.createElement(CameraScreen, { state: state, dispatch: dispatch, back: () => setTab("home"), toast: pushToast }),
                 tab === "personas" && React.createElement(PeopleScreen, { state: state, dispatch: dispatch, back: () => setTab("home") }),
@@ -8495,6 +8831,4 @@ const _el = document.getElementById("root");
 _el.innerHTML = "";
 createRoot(_el).render(React.createElement(BrosinOS));
 
-</script>
-</body>
-</html>
+</script></body></html>
