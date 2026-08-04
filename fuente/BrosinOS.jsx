@@ -1134,9 +1134,123 @@ const EMPTY = {
   teamProjects: [],
   fixeds: [],
   challenges: [],
+  // El juego: avatar, áreas, malos hábitos y tienda
+  rpg: null,
+  malos: [],
+  tienda: [],
   // Marcas de borrado: { coleccion: { id: fechaISO } }. Sin esto, al fusionar
   // dos dispositivos lo borrado en uno "revive" desde el otro.
   _tomb: {},
+};
+
+/* ============================================================
+   EL JUEGO DE LA VIDA — avatar, áreas, Brosin Coins
+   Kevin divide su vida en nueve áreas y se pone metas en cada una. El avatar
+   tiene puntos de vida: los malos hábitos se los quitan, los buenos dan
+   experiencia y monedas. Con las monedas se compran malos hábitos de forma
+   controlada, que es lo que evita que el sistema sea un látigo.
+
+   La diferencia con hacerlo en papel: esta app YA SABE su dinero real. Por eso
+   al morir no se revive corriendo 50 km, se revive ganando 100 € de verdad —
+   y la app lo comprueba sola mirando los ingresos apuntados.
+   ============================================================ */
+const AREAS_DEFECTO = [
+  { k: "finanzas", n: "Finanzas", e: "💰" },
+  { k: "salud", n: "Salud", e: "💪" },
+  { k: "espiritual", n: "Vida espiritual", e: "🕊️" },
+  { k: "apostolado", n: "Apostolado", e: "🤲" },
+  { k: "familia", n: "Familia", e: "🏠" },
+  { k: "amor", n: "Relación amorosa", e: "❤️" },
+  { k: "social", n: "Social", e: "🎉" },
+  { k: "carrera", n: "Carrera y estudios", e: "🎓" },
+  { k: "creatividad", n: "Creatividad", e: "🎨" },
+];
+const RPG_VIDA_MAX = 1000;
+const RPG_META_REVIVIR = 100;     // euros que hay que ganar para volver
+const RPG_HORAS_REVIVIR = 48;     // plazo desde la muerte
+const RPG_VIDAS_MAX = 3;
+
+const rpgNuevo = () => ({
+  hp: RPG_VIDA_MAX, maxHp: RPG_VIDA_MAX, vidas: 0, muertoDesde: null,
+  coins: 0, xp: {}, areas: AREAS_DEFECTO.map((a) => ({ ...a })), ultimaVidaEn: null,
+});
+const rpgDe = (state) => (state && state.rpg) ? state.rpg : rpgNuevo();
+
+/* Curva de niveles: cada nivel cuesta 100 XP más que el anterior (100, 200,
+   300…). Sube rápido al principio, que es cuando engancha, y se pone serio
+   después. */
+function nivelDeXp(xp) {
+  let n = 1, falta = 100, resto = Number(xp || 0);
+  while (resto >= falta && n < 99) { resto -= falta; n++; falta += 100; }
+  return { nivel: n, dentro: resto, paraSiguiente: falta };
+}
+
+// Euros ingresados desde una fecha (lo que decide si revives)
+function ingresosDesde(state, desdeISO) {
+  const t0 = Date.parse(desdeISO || "");
+  if (isNaN(t0)) return 0;
+  return (state.tx || []).reduce((s, x) => {
+    if (x.type !== "ingreso") return s;
+    const t = Date.parse((x.createdAt || (String(x.date || "") + "T12:00:00")) || "");
+    return (!isNaN(t) && t >= t0) ? s + Number(x.amount || 0) : s;
+  }, 0);
+}
+
+/* Estado del avatar ahora mismo: si está muerto, cuánto le falta para volver
+   y cuánto plazo le queda. */
+function rpgEstado(state) {
+  const r = rpgDe(state);
+  const muerto = !!r.muertoDesde;
+  if (!muerto) return { ...r, muerto: false };
+  const ganado = ingresosDesde(state, r.muertoDesde);
+  const finPlazo = Date.parse(r.muertoDesde) + RPG_HORAS_REVIVIR * 3600 * 1000;
+  const horasRestantes = Math.max(0, Math.round((finPlazo - Date.now()) / 3600000));
+  return { ...r, muerto: true, ganado, falta: Math.max(0, RPG_META_REVIVIR - ganado), horasRestantes, puedeRevivir: ganado >= RPG_META_REVIVIR };
+}
+
+/* Recompensa de un hábito. La dificultad multiplica: lo que cuesta más, paga
+   más. Curar al cumplir es lo que hace que el juego se pueda ganar — si solo
+   restaran los malos hábitos, morir sería cuestión de tiempo. */
+const RPG_DIFS = [
+  { k: "facil", n: "Fácil", x: 1 },
+  { k: "normal", n: "Normal", x: 2 },
+  { k: "duro", n: "Duro", x: 3 },
+];
+const RPG_XP_BASE = 10, RPG_COIN_BASE = 5, RPG_CURA_BASE = 10;
+function premioDeHabito(h) {
+  const d = RPG_DIFS.find((x) => x.k === (h && h.dif)) || RPG_DIFS[1];
+  return { xp: RPG_XP_BASE * d.x, coins: RPG_COIN_BASE * d.x, cura: RPG_CURA_BASE * d.x, area: (h && h.area) || "salud" };
+}
+
+/* Marcar o desmarcar un hábito en un día. Un solo sitio para las dos cosas:
+   la racha y el premio. Desmarcar devuelve exactamente lo que dio, para que
+   un toque sin querer no infle nada. */
+function marcarHabito(state, dispatch, h, iso, toast) {
+  const set = new Set(h.done || []);
+  const estaba = set.has(iso);
+  if (estaba) set.delete(iso); else set.add(iso);
+  dispatch({ type: "update", col: "habits", id: h.id, patch: { done: [...set] } });
+
+  const r = rpgDe(state);
+  if (r.muertoDesde) return; // muerto no se gana nada: primero hay que volver
+  const p = premioDeHabito(h);
+  const signo = estaba ? -1 : 1;
+  /* Si ya estabas al máximo de vida, la cura se recorta. Al desmarcar hay que
+     devolver EXACTAMENTE lo que se dio, no la cura entera: si no, marcar y
+     desmarcar sin querer te dejaba con menos vida de la que tenías. Por eso el
+     reducer apunta lo que aplicó de verdad. */
+  const banco = (r.curas && r.curas.d === iso) ? (r.curas.h || {}) : {};
+  const dHp = estaba ? -Number(banco[h.id] != null ? banco[h.id] : p.cura) : p.cura;
+  dispatch({ type: "premio", payload: {
+    area: p.area, xp: signo * p.xp, coins: signo * p.coins, hp: dHp,
+    banco: { d: iso, k: h.id, quitar: estaba },
+  } });
+  if (!estaba && toast) toast(tri("+{c} monedas", { c: p.coins }), tri("+{x} XP · {a}", { x: p.xp, a: (nombreDeArea(state, p.area) || p.area) }));
+}
+const nombreDeArea = (state, k) => {
+  const list = (rpgDe(state).areas || AREAS_DEFECTO);
+  const a = list.find((x) => x.k === k);
+  return a ? tr(a.n) : k;
 };
 
 /* ============================================================
@@ -1255,6 +1369,31 @@ function reducer(state, a) {
     }
     case "drive":
       return { ...state, drive: { ...state.drive, ...a.payload } };
+    case "rpg":
+      // el avatar: se parchea entero, nunca se pisa lo que no venga en el patch
+      return { ...state, rpg: { ...rpgDe(state), ...a.payload } };
+    case "premio": {
+      /* Suma o resta al avatar. Va por incrementos y no por valores absolutos
+         a propósito: si se marcan tres hábitos seguidos, cada dispatch lee el
+         estado ya actualizado por el anterior y no se pierde ninguno. */
+      const r0 = rpgDe(state);
+      const d = a.payload || {};
+      const xp2 = { ...(r0.xp || {}) };
+      if (d.area && d.xp) xp2[d.area] = Math.max(0, Number(xp2[d.area] || 0) + Number(d.xp));
+      const tope = r0.maxHp || RPG_VIDA_MAX;
+      const hpAntes = Number(r0.hp || 0);
+      const hpNuevo = Math.max(0, Math.min(tope, hpAntes + Number(d.hp || 0)));
+      // Apuntar la cura REAL (la de después del tope) para poder deshacerla igual
+      let curas = r0.curas;
+      if (d.banco) {
+        const mismo = (curas && curas.d === d.banco.d) ? { ...curas.h } : {};
+        if (d.banco.quitar) delete mismo[d.banco.k]; else mismo[d.banco.k] = hpNuevo - hpAntes;
+        curas = { d: d.banco.d, h: mismo };
+      }
+      return { ...state, rpg: { ...r0, xp: xp2, curas,
+        coins: Math.max(0, Number(r0.coins || 0) + Number(d.coins || 0)),
+        hp: hpNuevo } };
+    }
     default:
       return state;
   }
@@ -2398,7 +2537,7 @@ function DailyBrief({ state, dispatch, streak, ai, go, onClose }) {
   const owedToMe = (state.debts || []).filter((d) => d.dir === "meDeben" && !d.settled).reduce((s, d) => s + Number(d.amount || 0), 0);
   const bds = (state.people || []).map((p) => ({ p, d: daysUntilBirthday(p.birthday) })).filter((x) => x.d != null && x.d <= 7).sort((a, b) => a.d - b.d);
   const nearGoal = (state.savings || []).map((h) => { const saved = (h.log || []).reduce((s, e) => s + Number(e.amount || 0), 0); const pct = h.target ? saved / h.target * 100 : 0; return { h, pct }; }).filter((x) => x.pct >= 80 && x.pct < 100);
-  const toggleHabit = (h) => { const set = new Set(h.done || []); if (set.has(t)) set.delete(t); else set.add(t); dispatch({ type: "update", col: "habits", id: h.id, patch: { done: [...set] } }); };
+  const toggleHabit = (h) => marcarHabito(state, dispatch, h, t);
   const Row = ({ icon, children }) => (
     <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "9px 0", borderBottom: `1px solid ${C.line}` }}>
       <span style={{ fontSize: 15, lineHeight: "20px" }}>{icon}</span>
@@ -2704,7 +2843,7 @@ function HomeScreen({ state, dispatch, go, ai, openMarkets, toast }) {
                     {habs.map((h) => {
                       const hecho = (h.done || []).includes(hoyISO);
                       return (
-                        <button key={h.id} onClick={() => { const set = new Set(h.done || []); if (set.has(hoyISO)) set.delete(hoyISO); else set.add(hoyISO); dispatch({ type: "update", col: "habits", id: h.id, patch: { done: [...set] } }); }}
+                        <button key={h.id} onClick={() => marcarHabito(state, dispatch, h, hoyISO, toast)}
                           style={{ borderRadius: 999, padding: "7px 13px", fontSize: 12.5, fontWeight: 800, cursor: "pointer", border: `1.5px solid ${hecho ? C.good : C.line}`, background: hecho ? "rgba(61,220,132,.15)" : "transparent", color: hecho ? C.good : C.textHi }}>
                           {hecho ? "✓ " : ""}{h.name}
                         </button>
@@ -2973,9 +3112,8 @@ ${buildMemory(state)}` + aiLangRule("json");
         } else if (a.type === "habit" && a.name) {
           const norm = (s) => String(s || "").toLowerCase().trim();
           const hb = (state.habits || []).find((h) => norm(h.name) === norm(a.name)) || (state.habits || []).find((h) => norm(h.name).includes(norm(a.name)) || norm(a.name).includes(norm(h.name)));
-          if (hb) {
-            const set = new Set(hb.done || []); set.add(todayISO());
-            dispatch({ type: "update", col: "habits", id: hb.id, patch: { done: [...set] } });
+          if (hb && !(hb.done || []).includes(todayISO())) {
+            marcarHabito(state, dispatch, hb, todayISO());
             done++; labels.push(`✅ Hábito: ${hb.name}`);
           }
         }
@@ -4955,6 +5093,251 @@ function bestStreak(dates) {
   return best;
 }
 /* ============================================================
+   PANTALLA DEL AVATAR — el juego de la vida
+   ============================================================ */
+function AvatarPanel({ state, dispatch, toast }) {
+  const [sheet, setSheet] = useState(null); // null | 'malo' | 'articulo' | 'areas'
+  const r = rpgEstado(state);
+  const malos = state.malos || [];
+  const tienda = state.tienda || [];
+  const areas = r.areas && r.areas.length ? r.areas : AREAS_DEFECTO;
+  const pctVida = Math.max(0, Math.min(100, (r.hp / (r.maxHp || RPG_VIDA_MAX)) * 100));
+  const colVida = pctVida > 50 ? C.good : pctVida > 20 ? C.yellow : C.bad;
+
+  const patch = (p) => dispatch({ type: "rpg", payload: p });
+
+  const revivir = () => {
+    patch({ hp: RPG_VIDA_MAX, muertoDesde: null, vidas: Math.max(0, (r.vidas || 0)) });
+    toast && toast(tr("¡Has vuelto! 🔥"), tri("Ganaste {n} y recuperas los {v} puntos de vida.", { n: money(r.ganado), v: RPG_VIDA_MAX }));
+  };
+
+  // Apuntar que has caído en un mal hábito: quita vida
+  const caer = (m) => {
+    const nuevoHp = Math.max(0, (r.hp || 0) - Number(m.coste || 0));
+    if (nuevoHp === 0 && (r.vidas || 0) > 0) {
+      patch({ hp: RPG_VIDA_MAX, vidas: r.vidas - 1 });
+      toast && toast(tr("Vida extra consumida"), tri("Te quedaban {n}. Sigues en pie.", { n: r.vidas - 1 }));
+    } else if (nuevoHp === 0) {
+      patch({ hp: 0, muertoDesde: nowISO() });
+      toast && toast(tr("Tu avatar ha caído"), tri("Para volver: gana {n} en {h} horas y apúntalo.", { n: money(RPG_META_REVIVIR), h: RPG_HORAS_REVIVIR }));
+    } else {
+      patch({ hp: nuevoHp });
+    }
+  };
+
+  // Comprar en la tienda: pagas con monedas y NO pierdes vida. Ese es el trato.
+  const comprar = (art) => {
+    if ((r.coins || 0) < Number(art.precio || 0)) { toast && toast(tr("Te faltan monedas"), tri("Necesitas {n} y tienes {t}.", { n: art.precio, t: r.coins || 0 })); return; }
+    patch({ coins: (r.coins || 0) - Number(art.precio || 0) });
+    toast && toast(tr("Disfrútalo, te lo has ganado"), tri("{a} · te quedan {n} monedas", { a: art.nombre, n: (r.coins || 0) - Number(art.precio || 0) }));
+  };
+
+  return (
+    <div>
+      {/* --- El avatar --- */}
+      <div style={{ ...card, padding: 18, marginBottom: 12, borderColor: r.muerto ? C.bad : C.line }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+          <BeeMark size={46} face={r.muerto ? "sleep" : pctVida > 50 ? "happy" : "neutral"} />
+          <div style={{ flex: 1 }}>
+            <div style={{ color: C.textHi, fontWeight: 900, fontSize: 17 }}>{state.profile.name || tr("Tu avatar")}</div>
+            <div style={{ color: C.textLo, fontSize: 12 }}>
+              {r.muerto ? tr("Caído") : tri("{n} de {m} puntos de vida", { n: r.hp, m: r.maxHp || RPG_VIDA_MAX })}
+            </div>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ color: C.yellow, fontWeight: 900, fontSize: 19 }}>{r.coins || 0}</div>
+            <div style={{ color: C.textLo, fontSize: 10, fontWeight: 700, letterSpacing: 0.6 }}>{tr("BROSIN COINS")}</div>
+          </div>
+        </div>
+
+        <div style={{ height: 14, borderRadius: 999, background: C.rail, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,.3) inset" }}>
+          <div style={{ width: `${pctVida}%`, height: "100%", background: `linear-gradient(90deg, ${colVida}, ${colVida}bb)`, borderRadius: 999, transition: "width .5s" }} />
+        </div>
+
+        {(r.vidas || 0) > 0 && (
+          <div style={{ color: C.good, fontSize: 12, fontWeight: 700, marginTop: 8 }}>
+            {tri("Tienes {n} vida(s) extra guardada(s)", { n: r.vidas })}
+          </div>
+        )}
+      </div>
+
+      {/* --- Muerto: la única salida es dinero real --- */}
+      {r.muerto && (
+        <div style={{ ...card, padding: 16, marginBottom: 12, borderColor: C.bad, background: "rgba(255,92,92,.08)" }}>
+          <div style={{ color: C.bad, fontWeight: 900, fontSize: 15, marginBottom: 6 }}>{tr("Tu avatar ha caído")}</div>
+          <div style={{ color: C.textHi, fontSize: 13.5, lineHeight: 1.5, marginBottom: 10 }}>
+            {tri("Para volver tienes que ganar {n}, del modo que sea, y apuntarlo en Movimientos. La app lo comprueba sola.", { n: money(RPG_META_REVIVIR) })}
+          </div>
+          <div style={{ height: 10, borderRadius: 999, background: C.rail, overflow: "hidden", marginBottom: 8 }}>
+            <div style={{ width: `${Math.min(100, (r.ganado / RPG_META_REVIVIR) * 100)}%`, height: "100%", background: C.good, borderRadius: 999 }} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 12 }}>
+            <span style={{ color: C.textHi, fontWeight: 800 }}>{money(r.ganado)} / {money(RPG_META_REVIVIR)}</span>
+            <span style={{ color: r.horasRestantes > 6 ? C.textLo : C.bad, fontWeight: 700 }}>{tri("{h} h de plazo", { h: r.horasRestantes })}</span>
+          </div>
+          {r.puedeRevivir
+            ? <PrimaryBtn full color={C.good} onClick={revivir}><Check size={18} strokeWidth={3} /> {tr("Revivir ahora")}</PrimaryBtn>
+            : <div style={{ color: C.textLo, fontSize: 12 }}>{tri("Te faltan {n}", { n: money(r.falta) })}</div>}
+        </div>
+      )}
+
+      {/* --- Las nueve áreas --- */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "0 0 10px" }}>
+        <h3 style={{ ...sectionH, fontSize: 13, margin: 0 }}>{tr("Tus áreas")}</h3>
+        <button onClick={() => setSheet("areas")} style={{ background: "none", border: "none", color: C.yellow, fontWeight: 800, fontSize: 12.5, cursor: "pointer", padding: 0 }}>{tr("Editar")}</button>
+      </div>
+      <div style={{ display: "grid", gap: 8, marginBottom: 16 }}>
+        {areas.map((a) => {
+          const xp = Number((r.xp || {})[a.k] || 0);
+          const { nivel, dentro, paraSiguiente } = nivelDeXp(xp);
+          return (
+            <div key={a.k} style={{ ...card, padding: 12, display: "flex", alignItems: "center", gap: 11 }}>
+              <span style={{ fontSize: 20 }}>{a.e}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                  <span style={{ color: C.textHi, fontWeight: 700, fontSize: 13.5 }}>{tr(a.n)}</span>
+                  <span style={{ color: C.yellow, fontWeight: 900, fontSize: 12.5 }}>{tri("Nv {n}", { n: nivel })}</span>
+                </div>
+                <div style={{ height: 6, borderRadius: 999, background: C.rail, overflow: "hidden", marginTop: 5 }}>
+                  <div style={{ width: `${(dentro / paraSiguiente) * 100}%`, height: "100%", background: C.yellow, borderRadius: 999 }} />
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* --- Malos hábitos --- */}
+      <h3 style={{ ...sectionH, fontSize: 13, margin: "0 0 10px" }}>{tr("Lo que te quita vida")}</h3>
+      {malos.length === 0 ? (
+        <div style={{ ...card, padding: 14, marginBottom: 16, color: C.textLo, fontSize: 12.5, lineHeight: 1.5 }}>
+          {tr("Añade los hábitos que te hacen daño y lo que te cuesta cada uno. Cuando caigas, lo apuntas y pierdes esos puntos.")}
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 8, marginBottom: 16 }}>
+          {malos.map((m) => (
+            <div key={m.id} style={{ ...card, padding: 12, display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ color: C.textHi, fontWeight: 700, fontSize: 13.5 }}>{m.nombre}</div>
+                <div style={{ color: C.bad, fontSize: 11.5, fontWeight: 700 }}>{tri("−{n} de vida", { n: m.coste })}</div>
+              </div>
+              <button onClick={() => caer(m)} disabled={r.muerto} style={{ ...miniBtn("rgba(255,92,92,.18)", C.bad), flex: "0 0 auto", padding: "8px 12px" }}>{tr("He caído")}</button>
+              <button onClick={() => dispatch({ type: "remove", col: "malos", id: m.id })} style={{ ...iconBtn, width: 32, height: 32, color: C.textLo }}><Trash2 size={13} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* --- La tiendita --- */}
+      <h3 style={{ ...sectionH, fontSize: 13, margin: "0 0 4px" }}>{tr("La tiendita")}</h3>
+      <div style={{ color: C.textLo, fontSize: 11.5, marginBottom: 10, lineHeight: 1.45 }}>
+        {tr("Aquí te das el capricho sin perder vida: lo pagas con lo que has ganado portándote bien.")}
+      </div>
+      {tienda.length === 0 ? (
+        <div style={{ ...card, padding: 14, marginBottom: 12, color: C.textLo, fontSize: 12.5 }}>
+          {tr("Todavía no has puesto nada a la venta. Ej.: una cerveza por 200 monedas.")}
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
+          {tienda.map((art) => {
+            const puedo = (r.coins || 0) >= Number(art.precio || 0);
+            return (
+              <div key={art.id} style={{ ...card, padding: 12, display: "flex", alignItems: "center", gap: 10, opacity: puedo ? 1 : 0.55 }}>
+                <span style={{ fontSize: 19 }}>{art.emoji || "🎁"}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ color: C.textHi, fontWeight: 700, fontSize: 13.5 }}>{art.nombre}</div>
+                  <div style={{ color: C.yellow, fontSize: 11.5, fontWeight: 800 }}>{tri("{n} monedas", { n: art.precio })}</div>
+                </div>
+                <button onClick={() => comprar(art)} disabled={!puedo} style={{ ...miniBtn(puedo ? C.yellow : C.ink3, puedo ? C.ink : C.textLo), flex: "0 0 auto", padding: "8px 14px" }}>{tr("Comprar")}</button>
+                <button onClick={() => dispatch({ type: "remove", col: "tienda", id: art.id })} style={{ ...iconBtn, width: 32, height: 32, color: C.textLo }}><Trash2 size={13} /></button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <button onClick={() => setSheet("malo")} style={miniBtn(C.ink3, C.textHi)}>{tr("+ Mal hábito")}</button>
+        <button onClick={() => setSheet("articulo")} style={miniBtn(C.ink3, C.textHi)}>{tr("+ Artículo")}</button>
+      </div>
+
+      <div style={{ height: 100 }} />
+
+      <Sheet open={sheet === "areas"} onClose={() => setSheet(null)} title={tr("Tus áreas de vida")}>
+        <AreasEditor areas={areas} onSave={(list) => { patch({ areas: list }); setSheet(null); }} />
+      </Sheet>
+      <Sheet open={sheet === "malo"} onClose={() => setSheet(null)} title={tr("Nuevo mal hábito")}>
+        <NombrePrecioForm etiqueta={tr("¿Qué te quita vida?")} sugerencia={tr("Ej. Fumar, pedir comida a domicilio…")}
+          etiquetaNum={tr("Puntos de vida que cuesta")} porDefecto={100}
+          onSave={(d) => { dispatch({ type: "add", col: "malos", item: { id: uid(), nombre: d.nombre, coste: d.valor } }); setSheet(null); }} />
+      </Sheet>
+      <Sheet open={sheet === "articulo"} onClose={() => setSheet(null)} title={tr("Nuevo artículo de la tienda")}>
+        <NombrePrecioForm etiqueta={tr("¿Qué capricho?")} sugerencia={tr("Ej. Una cerveza, una peli, dormir hasta tarde…")}
+          etiquetaNum={tr("Precio en monedas")} porDefecto={200} conEmoji
+          onSave={(d) => { dispatch({ type: "add", col: "tienda", item: { id: uid(), nombre: d.nombre, precio: d.valor, emoji: d.emoji } }); setSheet(null); }} />
+      </Sheet>
+    </div>
+  );
+}
+
+/* Las áreas son tuyas: renómbralas, cámbiales el icono, quita las que no van
+   contigo o añade las que te falten. La clave interna no se toca nunca, para
+   que los hábitos ya creados sigan apuntando a su sitio. */
+const EMOJIS_AREA = ["💰", "💪", "🕊️", "🤲", "🏠", "❤️", "🎉", "🎓", "🎨", "🧠", "🌱", "🔥", "⭐", "🎯"];
+function AreasEditor({ areas, onSave }) {
+  const [list, setList] = useState(areas.map((a) => ({ ...a })));
+  const [abierta, setAbierta] = useState(null);
+  const set = (i, p) => setList((L) => L.map((x, j) => (j === i ? { ...x, ...p } : x)));
+  return (
+    <div>
+      <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
+        {list.map((a, i) => (
+          <div key={a.k} style={{ ...settingRow, padding: 10, display: "block" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <button onClick={() => setAbierta(abierta === i ? null : i)} style={{ ...iconBtn, width: 38, height: 38, fontSize: 18 }}>{a.e}</button>
+              <input style={{ ...inputStyle, flex: 1, marginBottom: 0 }} value={a.n} onChange={(e) => set(i, { n: e.target.value })} />
+              <button onClick={() => setList((L) => L.filter((_, j) => j !== i))} style={{ ...iconBtn, width: 34, height: 34, color: C.textLo }}><Trash2 size={14} /></button>
+            </div>
+            {abierta === i && (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                {EMOJIS_AREA.map((e) => <Chip key={e} active={a.e === e} onClick={() => { set(i, { e }); setAbierta(null); }}>{e}</Chip>)}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      <button onClick={() => setList((L) => [...L, { k: "area" + uid(), n: tr("Área nueva"), e: "⭐" }])}
+        style={{ ...miniBtn(C.ink3, C.textHi), width: "100%", marginBottom: 12 }}>{tr("+ Añadir área")}</button>
+      <PrimaryBtn full onClick={() => onSave(list.filter((a) => a.n.trim()).map((a) => ({ ...a, n: a.n.trim() })))}>
+        <Check size={18} strokeWidth={3} /> {tr("Guardar")}
+      </PrimaryBtn>
+    </div>
+  );
+}
+
+function NombrePrecioForm({ etiqueta, sugerencia, etiquetaNum, porDefecto, conEmoji, onSave }) {
+  const [nombre, setNombre] = useState("");
+  const [valor, setValor] = useState(String(porDefecto || 100));
+  const [emoji, setEmoji] = useState("🎁");
+  return (
+    <div>
+      <Field label={etiqueta}><input style={inputStyle} value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder={sugerencia} autoFocus /></Field>
+      {conEmoji && (
+        <Field label={tr("Icono")}>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {["🍺", "🍕", "🎮", "🍫", "🎬", "😴", "🚬", "🎁"].map((x) => <Chip key={x} active={emoji === x} onClick={() => setEmoji(x)}>{x}</Chip>)}
+          </div>
+        </Field>
+      )}
+      <Field label={etiquetaNum}><input type="number" inputMode="numeric" style={inputStyle} value={valor} onChange={(e) => setValor(e.target.value)} /></Field>
+      <PrimaryBtn full onClick={() => { const v = Number(valor); if (!nombre.trim() || !isFinite(v) || v <= 0) return; onSave({ nombre: nombre.trim(), valor: v, emoji }); }}>
+        <Check size={18} strokeWidth={3} /> {tr("Guardar")}
+      </PrimaryBtn>
+    </div>
+  );
+}
+
+/* ============================================================
    RETOS CON AMIGOS — racha conjunta de 21 o 30 días
    ============================================================ */
 const isoPlus = (iso, n) => { const d = new Date(String(iso) + "T00:00:00"); if (isNaN(d.getTime())) return ""; d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
@@ -5084,18 +5467,19 @@ function ChallengeForm({ onSave }) {
   );
 }
 
-function HabitsList({ habits, dispatch, onAdd }) {
+function HabitsList({ habits, dispatch, onAdd, state, toast }) {
   if (!habits || habits.length === 0) return <EmptyState face="happy" title={tr("Crea tu racha")} sub={tr("Marca cada día que cumples un hábito y no rompas la cadena. Cuanto más larga, más cuesta soltarla.")} cta={tr("Nuevo hábito")} onCta={onAdd} />;
-  return <div className="bstagger" style={{ display: "grid", gap: 12 }}>{habits.map((h) => <HabitCard key={h.id} h={h} dispatch={dispatch} />)}</div>;
+  return <div className="bstagger" style={{ display: "grid", gap: 12 }}>{habits.map((h) => <HabitCard key={h.id} h={h} dispatch={dispatch} state={state} toast={toast} />)}</div>;
 }
-function HabitCard({ h, dispatch }) {
+function HabitCard({ h, dispatch, state, toast }) {
   const done = new Set(h.done || []);
   const streak = streakOf(done);
   const best = bestStreak(h.done || []);
   const t = todayISO();
   const doneToday = done.has(t);
   const col = h.color || C.yellow;
-  const toggle = () => { const set = new Set(h.done || []); if (set.has(t)) set.delete(t); else set.add(t); dispatch({ type: "update", col: "habits", id: h.id, patch: { done: [...set] } }); };
+  const toggle = () => marcarHabito(state, dispatch, h, t, toast);
+  const premio = premioDeHabito(h);
   const days = []; for (let i = 6; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); days.push(d.toISOString().slice(0, 10)); }
   return (
     <div style={{ ...card, padding: 16 }}>
@@ -5104,6 +5488,9 @@ function HabitCard({ h, dispatch }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ color: C.textHi, fontWeight: 800, fontSize: 16 }}>{h.name}</div>
           <div style={{ color: C.textLo, fontSize: 12 }}>{streak === 1 ? tri("🔥 1 día seguido · récord {r}", { r: best }) : tri("🔥 {n} días seguidos · récord {r}", { n: streak, r: best })}</div>
+          <div style={{ color: C.yellow, fontSize: 11, fontWeight: 700, marginTop: 2 }}>
+            {tri("+{x} XP {a} · +{c} monedas", { x: premio.xp, a: (AREAS_DEFECTO.find((z) => z.k === premio.area) || {}).e || "", c: premio.coins })}
+          </div>
         </div>
         <button onClick={() => dispatch({ type: "remove", col: "habits", id: h.id })} style={{ ...iconBtn, width: 30, height: 30, color: C.textLo }}><Trash2 size={14} /></button>
       </div>
@@ -5121,14 +5508,29 @@ function HabitCard({ h, dispatch }) {
     </div>
   );
 }
-function HabitForm({ onSave }) {
+function HabitForm({ onSave, areas }) {
   const [name, setName] = useState("");
   const [color, setColor] = useState(HABIT_COLORS[0]);
+  const [area, setArea] = useState("salud");
+  const [dif, setDif] = useState("normal");
+  const lista = (areas && areas.length) ? areas : AREAS_DEFECTO;
+  const p = premioDeHabito({ dif });
   return (
     <div>
       <Field label={tr("¿Qué hábito?")}><input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} placeholder={tr("Ej. Entrenar, leer, no fumar…")} autoFocus /></Field>
+      <Field label={tr("¿Qué área sube?")}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {lista.map((a) => <Chip key={a.k} active={area === a.k} onClick={() => setArea(a.k)}>{a.e} {tr(a.n)}</Chip>)}
+        </div>
+      </Field>
+      <Field label={tr("Lo que te cuesta")}>
+        <div style={{ display: "flex", gap: 6 }}>
+          {RPG_DIFS.map((d) => <Chip key={d.k} active={dif === d.k} onClick={() => setDif(d.k)}>{tr(d.n)}</Chip>)}
+        </div>
+        <div style={{ color: C.textLo, fontSize: 11.5, marginTop: 6 }}>{tri("Cada día que lo cumplas: +{x} XP, +{c} monedas y +{v} de vida.", { x: p.xp, c: p.coins, v: p.cura })}</div>
+      </Field>
       <Field label={tr("Color")}><div style={{ display: "flex", gap: 10 }}>{HABIT_COLORS.map((c) => <button key={c} onClick={() => setColor(c)} style={{ width: 36, height: 36, borderRadius: 999, background: c, border: color === c ? `3px solid ${C.textHi}` : "3px solid transparent", cursor: "pointer" }} />)}</div></Field>
-      <PrimaryBtn full onClick={() => name.trim() && onSave({ name: name.trim(), color })}><Check size={18} strokeWidth={3} /> {tr("Crear hábito")}</PrimaryBtn>
+      <PrimaryBtn full onClick={() => name.trim() && onSave({ name: name.trim(), color, area, dif })}><Check size={18} strokeWidth={3} /> {tr("Crear hábito")}</PrimaryBtn>
     </div>
   );
 }
@@ -6027,7 +6429,7 @@ function FiadoForm({ initial, onSave, onDelete }) {
 /* ============================================================
    CEREBRO — Objetivos + Notas + Chat IA
    ============================================================ */
-function BrainScreen({ state, dispatch, ai }) {
+function BrainScreen({ state, dispatch, ai, toast }) {
   const [tab, setTab] = useState("objetivos");
   const [sheet, setSheet] = useState(null); // 'goal' | 'note' | 'habit'
   const [editGoal, setEditGoal] = useState(null);
@@ -6047,6 +6449,7 @@ function BrainScreen({ state, dispatch, ai }) {
       <div style={{ display: "flex", gap: 8, marginBottom: 16, overflowX: "auto", paddingBottom: 4 }}>
         <Chip active={tab === "objetivos"} onClick={() => setTab("objetivos")} accent={C.purple}>{tr("Objetivos")}</Chip>
         <Chip active={tab === "habitos"} onClick={() => setTab("habitos")} accent={C.purple}>{tr("Hábitos")}</Chip>
+        <Chip active={tab === "avatar"} onClick={() => setTab("avatar")} accent={C.purple}>{tr("Avatar")}</Chip>
         <Chip active={tab === "retos"} onClick={() => setTab("retos")} accent={C.purple}>{tr("Retos")}</Chip>
         <Chip active={tab === "notas"} onClick={() => setTab("notas")} accent={C.purple}>{tr("Notas")}</Chip>
       </div>
@@ -6062,8 +6465,10 @@ function BrainScreen({ state, dispatch, ai }) {
       )}
 
       {tab === "habitos" && (
-        <HabitsList habits={state.habits} dispatch={dispatch} onAdd={() => setSheet("habit")} />
+        <HabitsList habits={state.habits} dispatch={dispatch} onAdd={() => setSheet("habit")} state={state} toast={toast} />
       )}
+
+      {tab === "avatar" && <AvatarPanel state={state} dispatch={dispatch} toast={toast} />}
 
       {tab === "retos" && (
         <ChallengesPanel state={state} dispatch={dispatch} onAdd={() => setSheet("challenge")} />
@@ -6092,13 +6497,13 @@ function BrainScreen({ state, dispatch, ai }) {
       )}
 
       <div style={{ height: 122 }} />
-      <FAB onClick={() => { setEditGoal(null); setSheet(tab === "notas" ? "note" : tab === "habitos" ? "habit" : tab === "retos" ? "challenge" : "goal"); }} label={tab === "notas" ? tr("Nota") : tab === "habitos" ? tr("Hábito") : tab === "retos" ? tr("Reto") : tr("Objetivo")} />
+      {tab !== "avatar" && <FAB onClick={() => { setEditGoal(null); setSheet(tab === "notas" ? "note" : tab === "habitos" ? "habit" : tab === "retos" ? "challenge" : "goal"); }} label={tab === "notas" ? tr("Nota") : tab === "habitos" ? tr("Hábito") : tab === "retos" ? tr("Reto") : tr("Objetivo")} />}
 
       <Sheet open={sheet === "goal"} onClose={() => { setSheet(null); setEditGoal(null); }} title={editGoal ? "Editar objetivo" : "Nuevo objetivo"}>
         <GoalForm initial={editGoal} onSave={(d) => { if (editGoal) dispatch({ type: "update", col: "goals", id: editGoal.id, patch: d }); else dispatch({ type: "add", col: "goals", item: { id: uid(), steps: [], ...d } }); setSheet(null); setEditGoal(null); }} />
       </Sheet>
       <Sheet open={sheet === "habit"} onClose={() => setSheet(null)} title={tr("Nuevo hábito")}>
-        <HabitForm onSave={(d) => { dispatch({ type: "add", col: "habits", item: { id: uid(), done: [], ...d } }); setSheet(null); }} />
+        <HabitForm areas={rpgDe(state).areas} onSave={(d) => { dispatch({ type: "add", col: "habits", item: { id: uid(), done: [], ...d } }); setSheet(null); }} />
       </Sheet>
       <Sheet open={sheet === "challenge"} onClose={() => setSheet(null)} title={tr("Nuevo reto")}>
         <ChallengeForm onSave={(d) => { dispatch({ type: "add", col: "challenges", item: { id: uid(), ...d } }); setSheet(null); }} />
@@ -8293,7 +8698,7 @@ export default function BrosinOS() {
               {tab === "agenda" && <AgendaScreen state={state} dispatch={dispatch} />}
               {tab === "dinero" && <MoneyScreen state={state} dispatch={dispatch} tab={moneyTab} setTab={setMoneyTab} toast={pushToast} ai={ai} />}
               {tab === "coleccion" && <CollectionScreen state={state} dispatch={dispatch} />}
-              {tab === "cerebro" && <BrainScreen state={state} dispatch={dispatch} ai={ai} />}
+              {tab === "cerebro" && <BrainScreen state={state} dispatch={dispatch} ai={ai} toast={pushToast} />}
               {tab === "camara" && <CameraScreen state={state} dispatch={dispatch} back={() => setTab("home")} toast={pushToast} />}
               {tab === "personas" && <PeopleScreen state={state} dispatch={dispatch} back={() => setTab("home")} />}
               {tab === "pantalla" && <ScreenTimeScreen state={state} dispatch={dispatch} back={() => setTab("home")} />}
