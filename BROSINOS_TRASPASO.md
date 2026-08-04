@@ -510,26 +510,29 @@ Kevin). El diccionario pasa de 711 a 773 claves. `I18N_VER = 43`.
 
 Kevin lo dijo tal cual: *"lo veo desorganizado… la app en si la veo un poco
 caotica muchas pestañas"*. Y tenía razón: había 5 pestañas abajo, pero Dinero
-escondía **nueve** sub-pestañas todas del mismo tamaño.
+escondía **nueve** sub-pestañas todas del mismo tamaño. Referencia que él pasó:
+bromos.app, del que salen la misión diaria, las pruebas y el castigo.
 
 **La navegación**
 
 - Abajo quedan **cuatro**: Hoy · Agenda · Dinero · Vida. Colección desaparece.
-- Dinero pasa a **tres grupos** (`GRUPOS_DINERO`): 💳 Día a día, 📈 Patrimonio,
-  🤝 Con otros. La hoja activa sigue siendo la misma variable `tab`, así que
+- Dinero pasa a **tres grupos** (`GRUPOS_DINERO`): Día a día, Patrimonio y
+  Con otros. La hoja activa sigue siendo la misma variable `tab`, así que
   ningún panel de abajo se enteró del cambio: cero riesgo de romper nada.
 - Colecciones, Objetos, Empresas y Fiados se mudan a Dinero. `CollectionScreen`
   acepta ahora `soloTab` y se empotra sin su título ni sus pestañas — se reusa
   entera, sin duplicar una línea.
 - Herramientas: 4 a la vista, las otras 4 tras "Ver todas".
 
-**Los hábitos, rehechos (idea tomada de bromOS)**
+**Los hábitos, rehechos**
 
 - **Banco por área**: todos los que quieras, agrupados por tus nueve áreas.
 - **La misión de hoy**: `MISION_TAM = 5`. `proponerMision()` elige repartiendo
   entre áreas y priorizando lo que llevas más tiempo sin tocar; con la estrella
-  ⭐ los cambias tú. Se guarda en `rpg.mision = {d, ids, cerrado}`.
+  los cambias tú. Se guarda en `rpg.mision = {d, ids, cerrado}`.
 - **Pruebas** (`PRUEBAS`): foto con hora, texto de 20 caracteres o un número.
+  La foto se reduce a 260 px y JPEG 0.55 antes de guardarse: a tamaño real,
+  cinco fotos diarias llenan el almacén en una semana y la app deja de guardar.
 - **El castigo**: `CASTIGO_POR_FALLO = 20` por cada uno de los cinco sin marcar.
   `cierreDelDia()` pasa cuenta la primera vez que abres la app al día siguiente:
   sin temporizadores, que es justo cuando te enteras.
