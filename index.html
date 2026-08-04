@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
 <title>Brosin OS</title>
 <meta name="description" content="Tu segundo cerebro. Bro, no te quedes sin." />
-<meta name="brosin-build" content="v41" />
+<meta name="brosin-build" content="v42" />
 <meta name="theme-color" content="#0a0a0a" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="mobile-web-app-capable" content="yes" />
@@ -59,7 +59,7 @@
 <div id="root">
   <div id="splash">
     <img class="bl" src="./brosin_eye.png" alt="Brosin" />
-    <div class="s">Despertando la colmena… · v41</div>
+    <div class="s">Despertando la colmena… · v42</div>
     <div class="l"></div>
   </div>
 </div>
@@ -330,18 +330,67 @@ const THEME_LIST = [
     { k: "gold", name: "Oro puro", emoji: "👑", req: 30 },
 ];
 const C = { ...DARK };
+/* ---------- Liquid Glass ----------
+   Lenguaje visual del kit de Almar, traído a los átomos de estilo de la app.
+   La receta: desenfoque + saturación + un punto de brillo sobre el fondo,
+   relleno translúcido con la luz cayendo desde arriba-izquierda, y un canto
+   con grosor. El desenfoque solo empaña; lo que hace que parezca CRISTAL y
+   no humo es la saturación.
+
+   Se DERIVA del tema activo en vez de fijarse a mano, así los cinco temas
+   (noche, claro, medianoche, miel, oro) salen coherentes solos.
+
+   El bisel va como box-shadow inset y no como pseudoelemento porque estos
+   átomos son objetos de estilo en línea y no admiten ::after. */
+const glassTokens = () => (C.base === "light"
+    ? { tint: "rgba(255,255,255,.58)", edge: "rgba(255,255,255,.70)", sheen: "rgba(255,255,255,.55)",
+        hi: "rgba(255,255,255,.75)", lo: "rgba(31,45,61,.10)", drop: "0 6px 14px rgba(31,45,61,.14)" }
+    : { tint: "rgba(14,14,16,.44)", edge: "rgba(255,255,255,.16)", sheen: "rgba(255,255,255,.10)",
+        hi: "rgba(255,255,255,.28)", lo: "rgba(0,0,0,.32)", drop: "0 6px 14px rgba(0,0,0,.30)" });
+// blur 16 equilibrado · saturate 1.8 · brightness 1.08 (el trío del kit)
+const GLASS_FILTER = "blur(16px) saturate(1.8) brightness(1.08)";
+/* El lienzo sobre el que flota todo. Sin esto el cristal no existe: el
+   brightness del filtro multiplica lo que hay detrás, y sobre negro puro
+   (#000) multiplicar no ilumina nada — los paneles quedan muertos.
+   Focos de marca muy difusos, dentro del marco de la app para que el
+   contenido se deslice por delante de ellos al desplazar.
+
+   OJO: nada de background-attachment:fixed aquí. Fixed posiciona el degradado
+   respecto al VIEWPORT, y como el marco solo mide 440 px, los focos se iban
+   fuera de la app y no se veía nada. Va relativo al propio marco. */
+const ambientBg = () => (C.base === "light"
+    ? `radial-gradient(80% 34% at 4% 0%, rgba(255,196,0,.34), transparent 62%),
+     radial-gradient(75% 32% at 100% 10%, rgba(144,19,254,.18), transparent 64%),
+     radial-gradient(95% 38% at 50% 100%, rgba(61,220,132,.20), transparent 66%),
+     ${C.bg0}`
+    : `radial-gradient(80% 34% at 4% 0%, rgba(255,212,0,.26), transparent 62%),
+     radial-gradient(75% 32% at 100% 10%, rgba(144,19,254,.34), transparent 64%),
+     radial-gradient(95% 38% at 50% 100%, rgba(61,220,132,.18), transparent 66%),
+     ${C.bg0}`);
+function glassSurface(radius, blur) {
+    const g = glassTokens();
+    const f = blur ? `blur(${blur}px) saturate(1.8) brightness(1.08)` : GLASS_FILTER;
+    return {
+        background: `linear-gradient(135deg, ${g.sheen}, ${g.tint})`,
+        backdropFilter: f,
+        WebkitBackdropFilter: f,
+        border: `1px solid ${g.edge}`,
+        borderRadius: radius,
+        boxShadow: `inset 1px 1px 0 ${g.hi}, inset -1px -1px 0 ${g.lo}, ${g.drop}`,
+    };
+}
 // Re-tokeniza C y los átomos de estilo de módulo (capturan valores al crearse).
 function applyTheme(mode) {
     const T = THEMES[mode] || DARK;
     if (C.mode === T.mode)
         return;
     Object.assign(C, T);
-    Object.assign(card, { background: C.surf, border: `1px solid ${C.edge}`, boxShadow: C.shadCard });
-    Object.assign(iconBtn, { background: C.surfBtn, border: `1px solid ${C.edge}`, color: C.textHi, boxShadow: C.shadBtn });
+    Object.assign(card, glassSurface(22));
+    Object.assign(iconBtn, glassSurface(14, 10), { color: C.textHi });
     Object.assign(inputStyle, { background: C.well, border: `1px solid ${C.edgeHi}`, color: C.textHi, boxShadow: C.wellShadow });
     sectionH.color = C.textHi;
     linkBtn.color = C.accentText;
-    Object.assign(settingRow, { background: C.surf, border: `1px solid ${C.edge}`, boxShadow: C.shadCard });
+    Object.assign(settingRow, glassSurface(18));
     // Los colores de tipo de la inversión compartida capturan C al cargar el módulo
     // (paleta noche); sin esto quedarían lavados/incorrectos en modo claro.
     const shareCols = { meter: "good", aporte: "good", sacar: "bad", gasto: "bad", ganancia: "yellow", reparto: "purple", reinversion: "purple" };
@@ -1491,15 +1540,9 @@ function BrosinLogo({ height = 60 }) {
     // el logo oficial (mascota bellota-cerebro, "logo amarillo.png") con halo dorado sutil
     return (React.createElement("img", { src: BROSIN_LOGO, alt: "Brosin", draggable: false, style: { height, width: "auto", display: "block", userSelect: "none", pointerEvents: "none", filter: "drop-shadow(0 10px 26px rgba(255,212,0,.22))" } }));
 }
-const card = {
-    // "placa física": superficie con degradado vertical, canto de luz cenital
-    // (inset superior) y caída suave sobre el fondo — 3 niveles: bg0 (fondo),
-    // card (placa), well/overrides (superficie hundida).
-    background: C.surf,
-    border: `1px solid ${C.edge}`,
-    borderRadius: 22,
-    boxShadow: C.shadCard,
-};
+// Panel de cristal. Antes era una placa opaca con degradado; ahora deja ver
+// el fondo con desenfoque y saturación. Se re-tokeniza en applyTheme().
+const card = glassSurface(22);
 function Title({ kicker, children, accent = C.yellow }) {
     return (React.createElement("div", { style: { marginBottom: 14 } },
         kicker && (React.createElement("div", { style: {
@@ -1637,11 +1680,15 @@ function Sheet({ open, onClose, title, children }) {
         React.createElement("div", { onClick: (e) => e.stopPropagation(), style: {
                 width: "100%",
                 maxWidth: 440,
-                background: C.surfSheet,
+                // Hoja de cristal: más cuerpo que una tarjeta porque lleva formularios
+                // encima y el texto tiene que ganar al fondo.
+                background: `linear-gradient(180deg, ${glassTokens().sheen}, ${C.base === "light" ? "rgba(255,255,255,.72)" : "rgba(12,12,14,.62)"})`,
+                backdropFilter: "blur(24px) saturate(1.8) brightness(1.06)",
+                WebkitBackdropFilter: "blur(24px) saturate(1.8) brightness(1.06)",
                 borderTopLeftRadius: 28,
                 borderTopRightRadius: 28,
-                borderTop: `1px solid ${C.edgeHi}`,
-                boxShadow: `0 1px 0 rgba(255,255,255,.06) inset, 0 -18px 50px ${C.dropSheet}`,
+                borderTop: `1px solid ${glassTokens().edge}`,
+                boxShadow: `inset 0 1px 0 ${glassTokens().hi}, 0 -18px 50px ${C.dropSheet}`,
                 padding: "16px 18px calc(22px + env(safe-area-inset-bottom))",
                 maxHeight: "86vh",
                 overflowY: "auto",
@@ -1656,17 +1703,14 @@ function Sheet({ open, onClose, title, children }) {
     return typeof document !== "undefined" && document.body ? createPortal(node, document.body) : node;
 }
 const iconBtn = {
-    background: C.surfBtn,
-    border: `1px solid ${C.edge}`,
+    ...glassSurface(14, 10),
     color: C.textHi,
-    borderRadius: 12,
     width: 36,
     height: 36,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     cursor: "pointer",
-    boxShadow: C.shadBtn,
 };
 /* form atoms */
 const inputStyle = {
@@ -5844,7 +5888,7 @@ function ChatSheet({ onClose, state, dispatch }) {
         }
     };
     return (React.createElement("div", { onClick: onClose, style: { position: "fixed", inset: 0, background: "rgba(0,0,0,.65)", zIndex: z, paddingBottom: kbInset, display: "flex", flexDirection: "column", justifyContent: "flex-end", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)" } },
-        React.createElement("div", { onClick: (e) => e.stopPropagation(), style: { background: C.surfSheet, borderTopLeftRadius: 28, borderTopRightRadius: 28, borderTop: `1px solid ${C.edgeHi}`, boxShadow: `0 1px 0 rgba(255,255,255,.06) inset, 0 -18px 50px ${C.dropSheet}`, height: "88%", display: "flex", flexDirection: "column", animation: "bsheet .32s cubic-bezier(.32,1.25,.45,1)" } },
+        React.createElement("div", { onClick: (e) => e.stopPropagation(), style: { background: `linear-gradient(180deg, ${glassTokens().sheen}, ${C.base === "light" ? "rgba(255,255,255,.72)" : "rgba(12,12,14,.62)"})`, backdropFilter: "blur(24px) saturate(1.8) brightness(1.06)", WebkitBackdropFilter: "blur(24px) saturate(1.8) brightness(1.06)", borderTopLeftRadius: 28, borderTopRightRadius: 28, borderTop: `1px solid ${glassTokens().edge}`, boxShadow: `inset 0 1px 0 ${glassTokens().hi}, 0 -18px 50px ${C.dropSheet}`, height: "88%", display: "flex", flexDirection: "column", animation: "bsheet .32s cubic-bezier(.32,1.25,.45,1)" } },
             React.createElement("div", { style: { padding: "14px 18px", borderBottom: `1px solid ${C.line}`, display: "flex", alignItems: "center", gap: 12 } },
                 React.createElement(BeeMark, { size: 38, face: "happy", color: C.purple }),
                 React.createElement("div", { style: { flex: 1 } },
@@ -6465,7 +6509,7 @@ function NotifSettings({ notif, onChange }) {
             React.createElement("div", { style: { ...card, padding: 12, background: C.well, fontSize: 12.5, color: C.textLo, lineHeight: 1.5 } }, tr("El recordatorio insistente ya no es general: se activa en cada evento cuando lo creas (opción \"recordatorio insistente\"). Así solo insisten las cosas que tú marques.")),
             React.createElement("div", { style: { ...card, padding: 12, marginTop: 12, background: C.well, fontSize: 12.5, color: C.textLo, lineHeight: 1.5 } }, "Brosin te avisa mientras la app est\u00E1 abierta o en segundo plano (seg\u00FAn tu m\u00F3vil). Para avisos con la app cerrada, a\u00F1\u00E1dela a tu pantalla de inicio (PWA) y permite notificaciones."))));
 }
-const settingRow = { ...card, padding: 12, display: "flex", alignItems: "center", gap: 12, cursor: "pointer", border: `1px solid ${C.line}` };
+const settingRow = { ...glassSurface(18), padding: 12, display: "flex", alignItems: "center", gap: 12, cursor: "pointer" };
 function BackupConfirm({ data, onCancel, onRestore }) {
     return (React.createElement("div", null,
         React.createElement("div", { style: { ...card, padding: 14, marginBottom: 14 } },
@@ -7608,6 +7652,25 @@ function BrosinOS() {
       @keyframes bparty {0%{transform:rotate(var(--a)) translateY(0) scale(1);opacity:1}100%{transform:rotate(var(--a)) translateY(-52px) scale(.4);opacity:0}}
       * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
       body { -webkit-font-smoothing: antialiased; }
+
+      /* ================= LIQUID GLASS =================
+         El lienzo con color va en el marco de la app (ambientBg), no aquí:
+         el shell exterior es negro a propósito para que en escritorio la app
+         siga pareciendo un móvil. */
+
+      /* Sin backdrop-filter (WebViews viejas): sube el relleno o el texto se pierde. */
+      @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+        [style*="backdrop-filter"], [style*="backdropFilter"] {
+          background: ${C.base === "light" ? "rgba(255,255,255,.94)" : "rgba(16,16,18,.94)"} !important;
+        }
+      }
+      @media (prefers-reduced-transparency: reduce) {
+        body { background: ${C.bg0} !important; }
+      }
+      /* Regla del kit: no transformar lo que hay ENCIMA de un cristal — la capa
+         de debajo se queda sin fondo que muestrear y parpadea en negro. Por eso
+         la entrada escalonada pasa a ser solo opacidad. */
+      @keyframes blistin {from{opacity:0}to{opacity:1}}
       ::-webkit-scrollbar { width: 0; height: 0; }
       input::placeholder, textarea::placeholder { color: ${C.base === "light" ? "#a39a83" : "#5a5a5a"}; }
       input[type="date"], input[type="time"] { color-scheme: ${C.base}; }
@@ -7741,7 +7804,7 @@ function BrosinOS() {
     /* shell */
     return (React.createElement("div", { style: { minHeight: "100vh", background: C.outer, display: "flex", justifyContent: "center", fontFamily: "'Inter','SF Pro Display',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif" } },
         styleTag,
-        React.createElement("div", { key: C.mode + "·" + CUR_LANG + "·" + langTick, style: { position: "relative", width: "100%", maxWidth: 440, minHeight: "100vh", background: C.bg0, overflow: "hidden", boxShadow: C.base === "light" ? "0 0 60px rgba(120,100,40,.25)" : "0 0 60px rgba(0,0,0,.6)" } },
+        React.createElement("div", { key: C.mode + "·" + CUR_LANG + "·" + langTick, style: { position: "relative", width: "100%", maxWidth: 440, minHeight: "100vh", background: ambientBg(), overflow: "hidden", boxShadow: C.base === "light" ? "0 0 60px rgba(120,100,40,.25)" : "0 0 60px rgba(0,0,0,.6)" } },
             React.createElement("div", { style: { position: "absolute", inset: 0, backgroundImage: `radial-gradient(${C.line} 1px, transparent 1px)`, backgroundSize: "22px 22px", opacity: 0.22, pointerEvents: "none" } }),
             React.createElement("div", { style: { position: "absolute", inset: 0, background: "radial-gradient(120% 55% at 50% -10%, rgba(255,212,0,.05), transparent 60%)", pointerEvents: "none" } }),
             React.createElement("div", { style: { position: "relative", height: "100vh", overflowY: "auto", paddingTop: "env(safe-area-inset-top)", paddingBottom: "calc(72px + env(safe-area-inset-bottom))" } }, !booted ? (React.createElement("div", { style: { height: "100vh", display: "grid", placeItems: "center" } },
