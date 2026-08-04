@@ -348,7 +348,8 @@ El fichero `test_v31.js` (78 comprobaciones, todas en verde) cubre: forma y requ
 | **v41** | **`5b3a4c8` + `4f4bcf3`** | **Sección Objetos: cartera de lo que cotiza de verdad. 711 claves, I18N_VER = 41** |
 | **v42** | **subida web** | **Cristal líquido (Liquid Glass) en toda la app: `glassSurface()` y fondo vivo detrás del marco. 711 claves, I18N_VER = 41** |
 | **v43** | **subida web** | **El juego de la vida: avatar de 1000 puntos, 9 áreas editables con XP y niveles, Brosin Coins, malos hábitos, tiendita y resurrección ganando 100 € de verdad. 773 claves, I18N_VER = 43** |
-| **v44** | **subida web** | **Cuatro pestañas en vez de cinco, Dinero en tres grupos, y los hábitos rehechos: banco por área, misión de cinco al día, pruebas y castigo por lo que dejas. 826 claves, I18N_VER = 44** ← actual |
+| **v44** | **subida web** | **Cuatro pestañas en vez de cinco, Dinero en tres grupos, y los hábitos rehechos: banco por área, misión de cinco al día, pruebas y castigo por lo que dejas. 826 claves, I18N_VER = 44** |
+| **v45** | **subida web** | **El Juego con pestaña propia y radar de áreas, temporadas de 30/90 días, clan con clasificación por códigos, y "hoy" pasa a hora local. 885 claves, I18N_VER = 45** ← actual |
 
 ---
 
@@ -561,3 +562,50 @@ del día con tres fallos → 1000 a 940 de vida. Sin errores en consola.
 capa social (clanes, clasificación, bote). Ojo con el bote: **con dinero real es
 juego de azar** y necesita licencia en España. Va con Brosin Coins y la pregunta
 queda para el gestor.
+
+---
+
+## v45 — El Juego sale a la barra (05/08/2026)
+
+Kevin: *"el apartado nuevo de habitos puntos y demas lo quiero separado abajo
+tmb como una pestaña unica y que sea mas parecido a bromos.app con el pentagono
+diciendo que habilidades destancan cuales no"*.
+
+**Aviso para el que venga detrás**: la inspiración es bromos.app (misión diaria,
+radar de áreas, temporadas, clan), pero el código y los textos son nuestros. No
+se copió nada literal, y es a propósito: esta app se va a publicar y a cobrar.
+
+**Lo nuevo**
+
+- **Pestaña Juego** abajo (5 en total: Hoy · Agenda · Dinero · Juego · Vida).
+  Cerebro se queda con Objetivos y Notas; hábitos, avatar y retos se mudan.
+- **`RadarAreas`**: el pentágono. SVG a pelo, sin librerías — cuatro fórmulas de
+  trigonometría. Tiene tantos lados como áreas tengas, así que si añades o
+  quitas una se redibuja solo. Suelo del 12 % para que un área a cero se siga
+  viendo. Debajo, "DESTACA" y "TE PIDE ATENCIÓN" con la más fuerte y la más floja.
+- **`nivelGlobal()`**: la suma de todo el XP, que es el número de la cabecera.
+- **Temporadas** (`state.temporadas`): bloques de 30 o 90 días. Al cerrarlas se
+  guarda nivel, XP y monedas del final. **El XP no se borra**: lo aprendido se
+  queda, solo empieza otra cuenta.
+- **Clan** (`state.clanes`): clasificación entre amigos **sin servidor**. Cada uno
+  genera su CARTA (`encodeShare({kind:"brosin-carta"})`) y la pasa por WhatsApp;
+  al pegarla entra en la tabla. Mismo truco que los Grupos de gastos, y con una
+  ventaja seria: los datos de sus amigos no viven en ningún servidor nuestro.
+- **El bote va en Brosin Coins, NUNCA en euros.** Un bote con dinero real es
+  juego de azar en España y necesita licencia. Está anotado para el gestor.
+
+**Un fallo de fechas que llevaba ahí desde el principio**
+
+`todayISO()` usaba `toISOString()`, o sea UTC, mientras la cabecera pintaba la
+fecha LOCAL. En España, entre las 00:00 y las 02:00, "hoy" seguía siendo ayer:
+marcabas un hábito a la una de la mañana y se apuntaba en el día anterior, la
+misión aparecía ya cumplida y el cierre del día se equivocaba de fecha. Se pilló
+de pura casualidad probando pasada la medianoche: la misión salía 3/3 recién
+estrenado el día. Ahora `todayISO()` va en hora local. Si algún día metes otra
+función de fechas, que use la local también.
+
+**Probado**: radar con las nueve áreas, temporada de 90 días creada y su ficha,
+clan creado, carta propia generada, carta de un amigo pegada y clasificación
+ordenada bien (Javi Nv 3 por delante de Kevin Nv 1). Sin errores en consola.
+
+**Traducciones**: 59 claves nuevas × 25 idiomas, en la misma versión. 826 → 885.
