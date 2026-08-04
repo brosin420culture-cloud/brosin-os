@@ -458,7 +458,6 @@ Sí son públicas y ya están incrustadas en `build_pwa.js` (es correcto y segur
 
 *Bro, no te quedes sin.*
 
-
 ---
 
 ## v43 — El juego de la vida (04/08/2026)
@@ -493,8 +492,8 @@ en el deporte. Está en **Cerebro → Avatar**.
 2. **Desmarcar te robaba vida.** Estando al máximo, marcar daba +0 de vida (tope)
    pero desmarcar restaba la cura entera → te quedabas con menos que al empezar.
    Ahora el reducer **apunta la cura que aplicó de verdad** (`rpg.curas`) y al
-   deshacer devuelve exactamente eso. Verificado con los dos casos: con vida a
-   970 y con vida al tope.
+   deshacer devuelve exactamente eso. Verificado con los dos casos: con la vida a
+   970 y con la vida al tope.
 
 **Probado de punta a punta** antes de publicar (en un iframe, con la app real):
 crear hábito → marcar/desmarcar tres veces → morir con un mal hábito de 1000 →
