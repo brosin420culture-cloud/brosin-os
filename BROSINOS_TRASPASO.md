@@ -347,7 +347,8 @@ El fichero `test_v31.js` (78 comprobaciones, todas en verde) cubre: forma y requ
 | v40 | `be653ee` + `3ef6e86` | Vender apunta **solo la ganancia**; Herramientas y Hábitos al abrir |
 | **v41** | **`5b3a4c8` + `4f4bcf3`** | **Sección Objetos: cartera de lo que cotiza de verdad. 711 claves, I18N_VER = 41** |
 | **v42** | **subida web** | **Cristal líquido (Liquid Glass) en toda la app: `glassSurface()` y fondo vivo detrás del marco. 711 claves, I18N_VER = 41** |
-| **v43** | **subida web** | **El juego de la vida: avatar de 1000 puntos, 9 áreas editables con XP y niveles, Brosin Coins, malos hábitos, tiendita y resurrección ganando 100 € de verdad. 773 claves, I18N_VER = 43** ← actual |
+| **v43** | **subida web** | **El juego de la vida: avatar de 1000 puntos, 9 áreas editables con XP y niveles, Brosin Coins, malos hábitos, tiendita y resurrección ganando 100 € de verdad. 773 claves, I18N_VER = 43** |
+| **v44** | **subida web** | **Cuatro pestañas en vez de cinco, Dinero en tres grupos, y los hábitos rehechos: banco por área, misión de cinco al día, pruebas y castigo por lo que dejas. 826 claves, I18N_VER = 44** ← actual |
 
 ---
 
@@ -502,3 +503,58 @@ en consola.
 
 **Traducciones**: 62 claves nuevas × 25 idiomas, **en la misma versión** (regla de
 Kevin). El diccionario pasa de 711 a 773 claves. `I18N_VER = 43`.
+
+---
+
+## v44 — Menos ruido y una misión al día (04/08/2026)
+
+Kevin lo dijo tal cual: *"lo veo desorganizado… la app en si la veo un poco
+caotica muchas pestañas"*. Y tenía razón: había 5 pestañas abajo, pero Dinero
+escondía **nueve** sub-pestañas todas del mismo tamaño.
+
+**La navegación**
+
+- Abajo quedan **cuatro**: Hoy · Agenda · Dinero · Vida. Colección desaparece.
+- Dinero pasa a **tres grupos** (`GRUPOS_DINERO`): 💳 Día a día, 📈 Patrimonio,
+  🤝 Con otros. La hoja activa sigue siendo la misma variable `tab`, así que
+  ningún panel de abajo se enteró del cambio: cero riesgo de romper nada.
+- Colecciones, Objetos, Empresas y Fiados se mudan a Dinero. `CollectionScreen`
+  acepta ahora `soloTab` y se empotra sin su título ni sus pestañas — se reusa
+  entera, sin duplicar una línea.
+- Herramientas: 4 a la vista, las otras 4 tras "Ver todas".
+
+**Los hábitos, rehechos (idea tomada de bromOS)**
+
+- **Banco por área**: todos los que quieras, agrupados por tus nueve áreas.
+- **La misión de hoy**: `MISION_TAM = 5`. `proponerMision()` elige repartiendo
+  entre áreas y priorizando lo que llevas más tiempo sin tocar; con la estrella
+  ⭐ los cambias tú. Se guarda en `rpg.mision = {d, ids, cerrado}`.
+- **Pruebas** (`PRUEBAS`): foto con hora, texto de 20 caracteres o un número.
+- **El castigo**: `CASTIGO_POR_FALLO = 20` por cada uno de los cinco sin marcar.
+  `cierreDelDia()` pasa cuenta la primera vez que abres la app al día siguiente:
+  sin temporizadores, que es justo cuando te enteras.
+- **Diario** (`state.diario`), una nota por día, historial completo y días
+  pasados editables. **Reglamento** de seis reglas dentro del Avatar.
+
+**Dos cosas aprendidas**
+
+1. **Cristal dentro de cristal se lava.** Puse `settingRow` (que es
+   `glassSurface`) dentro de una `card` (que también lo es) y la fila sin marcar
+   salía casi BLANCA con la letra gris encima: ilegible. Es la regla 2 y la 7 del
+   LiquidGlassKit. Arreglado con `filaDentro()`: **pintura, no desenfoque**. Si
+   vuelves a meter una fila dentro de un panel, usa esa y no `settingRow`.
+2. **Al probar en el iframe, mata el iframe ANTES de tocar localStorage.** El
+   flush de `pagehide` que añadimos en la v34 escribe el estado viejo encima de
+   lo que acabas de falsear, y parece que el código no funciona cuando sí lo
+   hace. Me costó una vuelta entera.
+
+**Probado**: misión marcar/desmarcar, prueba de texto, tres grupos de Dinero con
+Colecciones dentro, banco por área con estrella, reglamento, diario, y el cierre
+del día con tres fallos → 1000 a 940 de vida. Sin errores en consola.
+
+**Traducciones**: 53 claves nuevas × 25 idiomas, en la misma versión. 773 → 826.
+
+**Pendiente** (lo que Kevin pidió y aún no está): temporadas con reinicio, y la
+capa social (clanes, clasificación, bote). Ojo con el bote: **con dinero real es
+juego de azar** y necesita licencia en España. Va con Brosin Coins y la pregunta
+queda para el gestor.
