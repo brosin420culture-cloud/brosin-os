@@ -345,7 +345,9 @@ El fichero `test_v31.js` (78 comprobaciones, todas en verde) cubre: forma y requ
 | v38 | `5ce1c2f` | **Fusión real de sincronización** con marcas de borrado |
 | v39 | `2d599c0` + `74cc81e` | Los 25 idiomas al día: 690 claves, I18N_VER = 39 |
 | v40 | `be653ee` + `3ef6e86` | Vender apunta **solo la ganancia**; Herramientas y Hábitos al abrir |
-| **v41** | **`5b3a4c8` + `4f4bcf3`** | **Sección Objetos: cartera de lo que cotiza de verdad. 711 claves, I18N_VER = 41** ← actual |
+| **v41** | **`5b3a4c8` + `4f4bcf3`** | **Sección Objetos: cartera de lo que cotiza de verdad. 711 claves, I18N_VER = 41** |
+| **v42** | **subida web** | **Cristal líquido (Liquid Glass) en toda la app: `glassSurface()` y fondo vivo detrás del marco. 711 claves, I18N_VER = 41** |
+| **v43** | **subida web** | **El juego de la vida: avatar de 1000 puntos, 9 áreas editables con XP y niveles, Brosin Coins, malos hábitos, tiendita y resurrección ganando 100 € de verdad. 773 claves, I18N_VER = 43** ← actual |
 
 ---
 
@@ -455,3 +457,49 @@ Sí son públicas y ya están incrustadas en `build_pwa.js` (es correcto y segur
 **Siguiente cosa que hacer: lo que pida Kevin. No hay deuda pendiente.**
 
 *Bro, no te quedes sin.*
+
+
+---
+
+## v43 — El juego de la vida (04/08/2026)
+
+Kevin lo pidió así: un RPG de su propia vida, **pero enfocado en el dinero**, no
+en el deporte. Está en **Cerebro → Avatar**.
+
+**Las piezas**
+
+- `AREAS_DEFECTO` — sus nueve áreas (finanzas primero), **editables desde la app**
+  (`AreasEditor`): renombrar, cambiar el icono, quitar y añadir. La clave interna
+  (`k`) no se toca nunca, para que los hábitos ya creados sigan apuntando a su sitio.
+- `nivelDeXp(xp)` — cada nivel cuesta 100 XP más que el anterior (100, 200, 300…).
+  Sube rápido al principio, que es cuando engancha.
+- **Los premios salen SOLO de los hábitos** (él lo pidió expresamente). Cada hábito
+  tiene área y dificultad (Fácil ×1, Normal ×2, Duro ×3) → +10/20/30 XP,
+  +5/10/15 monedas y +10/20/30 de vida por día cumplido.
+- **Malos hábitos** (`state.malos`): tú defines lo que te quita y cuánto. Botón
+  "He caído" → resta esa vida. Si llegas a 0 y tienes vida extra, se gasta una.
+- **La tiendita** (`state.tienda`): el mismo capricho, pero pagado con monedas y
+  SIN perder vida. Ese es el trato que hace que el sistema no sea un látigo.
+- **Muerte y resurrección**: a 0 puntos el avatar cae. Para volver hay que **ganar
+  100 € de verdad en 48 h y apuntarlos en Movimientos** — `ingresosDesde()` los suma
+  solo desde el momento de la muerte, así que no valen ingresos viejos.
+
+**Dos trampas que costaron encontrar**
+
+1. **Los premios se pisaban entre sí.** Si se marcaban tres hábitos seguidos, cada
+   uno leía el mismo `state` viejo y solo contaba el último. Por eso el reducer
+   tiene `case "premio"`: va por **incrementos**, no por valores absolutos, y cada
+   dispatch lee el estado ya actualizado por el anterior.
+2. **Desmarcar te robaba vida.** Estando al máximo, marcar daba +0 de vida (tope)
+   pero desmarcar restaba la cura entera → te quedabas con menos que al empezar.
+   Ahora el reducer **apunta la cura que aplicó de verdad** (`rpg.curas`) y al
+   deshacer devuelve exactamente eso. Verificado con los dos casos: con vida a
+   970 y con vida al tope.
+
+**Probado de punta a punta** antes de publicar (en un iframe, con la app real):
+crear hábito → marcar/desmarcar tres veces → morir con un mal hábito de 1000 →
+apuntar 100 € → revivir → comprar en la tienda → renombrar un área. Sin errores
+en consola.
+
+**Traducciones**: 62 claves nuevas × 25 idiomas, **en la misma versión** (regla de
+Kevin). El diccionario pasa de 711 a 773 claves. `I18N_VER = 43`.
