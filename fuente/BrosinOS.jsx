@@ -25,7 +25,7 @@ import {
    diccionario activo; si falta, devuelve el español (nunca se ve un hueco).
    Diccionarios: /i18n/{lang}.json — se descargan solo al elegir el idioma y
    quedan cacheados. El marco remonta con key={...lang} al cambiar. */
-const I18N_VER = "44"; // rompe la caché del SW al subir versión
+const I18N_VER = "45"; // rompe la caché del SW al subir versión
 const LANGS = [
   { k: "auto", label: "Automático" },
   { k: "es", label: "Español", flag: "🇪🇸", locale: "es-ES" },
@@ -332,7 +332,15 @@ const AREAS = [
 
 /* ---------- tiny utils ---------- */
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
-const todayISO = () => new Date().toISOString().slice(0, 10);
+/* "Hoy" es TU hoy, no el de Greenwich. Con toISOString() en España, entre las
+   00:00 y las 02:00 el día seguía siendo el de ayer: marcabas un hábito a la
+   una de la mañana y se apuntaba en el día anterior, la misión salía ya hecha
+   y el cierre del día se equivocaba de fecha. La cabecera ya usaba la fecha
+   local, así que además se contradecían entre ellas. */
+const todayISO = () => {
+  const d = new Date(), p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
 const nowISO = () => new Date().toISOString();
 const money = (n) =>
   (Number(n) || 0).toLocaleString(LOCALE, { style: "currency", currency: "EUR", maximumFractionDigits: 2 });
@@ -1137,8 +1145,10 @@ const EMPTY = {
   rpg: null,
   malos: [],
   tienda: [],
-  pruebas: [],   // evidencias de hábitos cumplidos (foto pequeña, texto o número)
-  diario: [],    // la nota del día, una por fecha
+  pruebas: [],     // evidencias de hábitos cumplidos (foto pequeña, texto o número)
+  diario: [],      // la nota del día, una por fecha
+  temporadas: [],  // bloques de 30 o 90 días con su resultado guardado
+  clanes: [],      // clasificación con amigos, por códigos: sin servidor
   // Marcas de borrado: { coleccion: { id: fechaISO } }. Sin esto, al fusionar
   // dos dispositivos lo borrado en uno "revive" desde el otro.
   _tomb: {},
@@ -1195,6 +1205,36 @@ function ingresosDesde(state, desdeISO) {
     const t = Date.parse((x.createdAt || (String(x.date || "") + "T12:00:00")) || "");
     return (!isNaN(t) && t >= t0) ? s + Number(x.amount || 0) : s;
   }, 0);
+}
+
+/* Nivel global: la suma de todo lo que has hecho, mires el área que mires.
+   Es el número grande de la cabecera del juego. */
+function nivelGlobal(state) {
+  const r = rpgDe(state);
+  const total = Object.values(r.xp || {}).reduce((s, v) => s + Number(v || 0), 0);
+  return { ...nivelDeXp(total), total };
+}
+
+/* Radiografía de tus áreas: cuánto tienes en cada una, cuál destaca y cuál
+   está pidiendo atención. Es lo que dibuja el radar. */
+function radiografia(state) {
+  const r = rpgDe(state);
+  const areas = (r.areas && r.areas.length) ? r.areas : AREAS_DEFECTO;
+  const filas = areas.map((a) => {
+    const xp = Number((r.xp || {})[a.k] || 0);
+    const n = nivelDeXp(xp);
+    return { ...a, xp, nivel: n.nivel, dentro: n.dentro, paraSiguiente: n.paraSiguiente };
+  });
+  const tope = Math.max(1, ...filas.map((f) => f.xp));
+  const conValor = filas.map((f) => ({ ...f, ratio: f.xp / tope }));
+  const orden = [...conValor].sort((a, b) => b.xp - a.xp);
+  const hayDatos = orden.length > 1 && orden[0].xp > 0;
+  return {
+    filas: conValor,
+    fuerte: hayDatos ? orden[0] : null,
+    flojo: hayDatos ? orden[orden.length - 1] : null,
+    media: conValor.reduce((s, f) => s + f.nivel, 0) / (conValor.length || 1),
+  };
 }
 
 /* Estado del avatar ahora mismo: si está muerto, cuánto le falta para volver
@@ -2894,7 +2934,7 @@ function HomeScreen({ state, dispatch, go, ai, openMarkets, toast }) {
         {homeTab === "vistazo" && (
           <>
             {/* La misión manda: es lo primero que se ve al abrir la app */}
-            <MisionDeHoy state={state} dispatch={dispatch} toast={toast} onVerBanco={() => go("cerebro")} />
+            <MisionDeHoy state={state} dispatch={dispatch} toast={toast} onVerBanco={() => go("juego")} />
 
             {/* Antes había ocho herramientas siempre a la vista y llenaban media
                 pantalla. Ahora se ven las cuatro de siempre y las otras cuatro
@@ -5426,10 +5466,70 @@ function bestStreak(dates) {
   return best;
 }
 /* ============================================================
+   EL RADAR DE ÁREAS — de un vistazo, en qué destacas y en qué no
+   SVG a pelo, sin librerías: son cuatro fórmulas de trigonometría y pesa cero.
+   El polígono tiene tantos lados como áreas tengas (nueve por defecto), así
+   que si añades o quitas una, se redibuja solo.
+   ============================================================ */
+function RadarAreas({ filas, size = 250 }) {
+  const n = filas.length;
+  if (n < 3) return null;
+  const cx = size / 2, cy = size / 2 + 4;
+  const R = size / 2 - 34;              // hueco para las etiquetas
+  const ang = (i) => (Math.PI * 2 * i) / n - Math.PI / 2;   // arriba primero
+  const punto = (i, r) => [cx + Math.cos(ang(i)) * R * r, cy + Math.sin(ang(i)) * R * r];
+  const camino = (r) => filas.map((f, i) => punto(i, typeof r === "function" ? r(f) : r).join(",")).join(" ");
+  const anillos = [0.25, 0.5, 0.75, 1];
+  // Suelo del 12 % para que un área a cero siga viéndose y se pueda tocar
+  const relleno = camino((f) => 0.12 + f.ratio * 0.88);
+
+  return (
+    <svg viewBox={`0 0 ${size} ${size + 8}`} style={{ width: "100%", height: "auto", display: "block", overflow: "visible" }}>
+      <defs>
+        <radialGradient id="radarFill" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor={C.yellow} stopOpacity="0.55" />
+          <stop offset="100%" stopColor={C.yellow} stopOpacity="0.16" />
+        </radialGradient>
+      </defs>
+
+      {/* telaraña */}
+      {anillos.map((a, i) => (
+        <polygon key={i} points={camino(a)} fill="none" stroke={C.line} strokeWidth={i === anillos.length - 1 ? 1.4 : 1} opacity={i === anillos.length - 1 ? 0.9 : 0.45} />
+      ))}
+      {filas.map((f, i) => {
+        const [x, y] = punto(i, 1);
+        return <line key={f.k} x1={cx} y1={cy} x2={x} y2={y} stroke={C.line} strokeWidth="1" opacity="0.45" />;
+      })}
+
+      {/* tu forma */}
+      <polygon points={relleno} fill="url(#radarFill)" stroke={C.yellow} strokeWidth="2" strokeLinejoin="round" />
+      {filas.map((f, i) => {
+        const [x, y] = punto(i, 0.12 + f.ratio * 0.88);
+        return <circle key={f.k} cx={x} cy={y} r="3.2" fill={C.yellow} stroke={C.ink} strokeWidth="1.2" />;
+      })}
+
+      {/* etiquetas: el emoji fuera del polígono y el nivel debajo */}
+      {filas.map((f, i) => {
+        const [x, y] = punto(i, 1.22);
+        return (
+          <g key={f.k}>
+            <text x={x} y={y} textAnchor="middle" dominantBaseline="middle" style={{ fontSize: 15 }}>{f.e}</text>
+            <text x={x} y={y + 13} textAnchor="middle" dominantBaseline="middle" style={{ fontSize: 8.5, fontWeight: 800, fill: C.textLo, letterSpacing: 0.2 }}>{f.nivel}</text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+/* ============================================================
    PANTALLA DEL AVATAR — el juego de la vida
    ============================================================ */
-function AvatarPanel({ state, dispatch, toast }) {
-  const [sheet, setSheet] = useState(null); // null | 'malo' | 'articulo' | 'areas'
+function AvatarPanel({ state, dispatch, toast, seccion }) {
+  const [sheet, setSheet] = useState(null); // null | 'malo' | 'articulo' | 'areas' | 'reglas'
+  const ver = (k) => !seccion || seccion === k;   // sin sección, se ve todo
+  const radio = radiografia(state);
+  const nivelG = nivelGlobal(state);
   const r = rpgEstado(state);
   const malos = state.malos || [];
   const tienda = state.tienda || [];
@@ -5467,11 +5567,17 @@ function AvatarPanel({ state, dispatch, toast }) {
 
   return (
     <div>
-      {/* --- El avatar --- */}
+      {/* --- El avatar: nivel, vida y monedas de un vistazo --- */}
+      {ver("avatar") && (
       <div style={{ ...card, padding: 18, marginBottom: 12, borderColor: r.muerto ? C.bad : C.line }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-          <BeeMark size={46} face={r.muerto ? "sleep" : pctVida > 50 ? "happy" : "neutral"} />
-          <div style={{ flex: 1 }}>
+          <div style={{ position: "relative", flexShrink: 0 }}>
+            <BeeMark size={46} face={r.muerto ? "sleep" : pctVida > 50 ? "happy" : "neutral"} />
+            <span style={{ position: "absolute", bottom: -4, right: -6, background: C.yellow, color: C.ink, fontSize: 10, fontWeight: 900, borderRadius: 999, padding: "1px 6px", boxShadow: "0 2px 6px rgba(0,0,0,.4)" }}>
+              {tri("Nv {n}", { n: nivelG.nivel })}
+            </span>
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ color: C.textHi, fontWeight: 900, fontSize: 17 }}>{state.profile.name || tr("Tu avatar")}</div>
             <div style={{ color: C.textLo, fontSize: 12 }}>
               {r.muerto ? tr("Caído") : tri("{n} de {m} puntos de vida", { n: r.hp, m: r.maxHp || RPG_VIDA_MAX })}
@@ -5487,15 +5593,41 @@ function AvatarPanel({ state, dispatch, toast }) {
           <div style={{ width: `${pctVida}%`, height: "100%", background: `linear-gradient(90deg, ${colVida}, ${colVida}bb)`, borderRadius: 999, transition: "width .5s" }} />
         </div>
 
-        {(r.vidas || 0) > 0 && (
-          <div style={{ color: C.good, fontSize: 12, fontWeight: 700, marginTop: 8 }}>
-            {tri("Tienes {n} vida(s) extra guardada(s)", { n: r.vidas })}
-          </div>
-        )}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+          <span style={{ color: C.textLo, fontSize: 11 }}>{tri("{n}/{m} XP para el nivel {s}", { n: nivelG.dentro, m: nivelG.paraSiguiente, s: nivelG.nivel + 1 })}</span>
+          {(r.vidas || 0) > 0 && <span style={{ color: C.good, fontSize: 11.5, fontWeight: 800 }}>{tri("+{n} vida extra", { n: r.vidas })}</span>}
+        </div>
       </div>
+      )}
+
+      {/* --- El radar: dónde estás fuerte y dónde flojeas --- */}
+      {ver("avatar") && (
+        <div style={{ ...card, padding: "16px 14px 12px", marginBottom: 12 }}>
+          <div style={{ color: C.textHi, fontWeight: 900, fontSize: 14, marginBottom: 2 }}>{tr("Tu forma")}</div>
+          <div style={{ color: C.textLo, fontSize: 11.5, marginBottom: 6 }}>{tr("Cuanto más lejos del centro, más nivel tienes en esa área.")}</div>
+          <RadarAreas filas={radio.filas} />
+          {radio.fuerte && radio.flojo && radio.fuerte.k !== radio.flojo.k && (
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <div style={{ ...filaDentro(false), flex: 1, padding: "9px 11px" }}>
+                <div style={{ color: C.good, fontSize: 10, fontWeight: 800, letterSpacing: 0.5 }}>{tr("DESTACA")}</div>
+                <div style={{ color: C.textHi, fontWeight: 700, fontSize: 13 }}>{radio.fuerte.e} {tr(radio.fuerte.n)}</div>
+              </div>
+              <div style={{ ...filaDentro(false), flex: 1, padding: "9px 11px" }}>
+                <div style={{ color: C.bad, fontSize: 10, fontWeight: 800, letterSpacing: 0.5 }}>{tr("TE PIDE ATENCIÓN")}</div>
+                <div style={{ color: C.textHi, fontWeight: 700, fontSize: 13 }}>{radio.flojo.e} {tr(radio.flojo.n)}</div>
+              </div>
+            </div>
+          )}
+          {!radio.fuerte && (
+            <div style={{ color: C.textLo, fontSize: 12, marginTop: 8, lineHeight: 1.45 }}>
+              {tr("Cumple hábitos y el radar se irá deformando hacia lo que trabajas. Ahí verás lo que tienes abandonado.")}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* --- Muerto: la única salida es dinero real --- */}
-      {r.muerto && (
+      {r.muerto && ver("avatar") && (
         <div style={{ ...card, padding: 16, marginBottom: 12, borderColor: C.bad, background: "rgba(255,92,92,.08)" }}>
           <div style={{ color: C.bad, fontWeight: 900, fontSize: 15, marginBottom: 6 }}>{tr("Tu avatar ha caído")}</div>
           <div style={{ color: C.textHi, fontSize: 13.5, lineHeight: 1.5, marginBottom: 10 }}>
@@ -5514,13 +5646,16 @@ function AvatarPanel({ state, dispatch, toast }) {
         </div>
       )}
 
+      {ver("avatar") && (
       <button onClick={() => setSheet("reglas")} style={{ ...filaDentro(false), width: "100%", padding: "11px 14px", marginBottom: 14, display: "flex", alignItems: "center", gap: 10, cursor: "pointer", textAlign: "left" }}>
         <span style={{ fontSize: 16 }}>📜</span>
         <span style={{ flex: 1, color: C.textHi, fontWeight: 700, fontSize: 13.5 }}>{tr("Las reglas del juego")}</span>
         <ChevronRight size={16} color={C.textLo} />
       </button>
+      )}
 
       {/* --- Las nueve áreas --- */}
+      {ver("avatar") && (<>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "0 0 10px" }}>
         <h3 style={{ ...sectionH, fontSize: 13, margin: 0 }}>{tr("Tus áreas")}</h3>
         <button onClick={() => setSheet("areas")} style={{ background: "none", border: "none", color: C.yellow, fontWeight: 800, fontSize: 12.5, cursor: "pointer", padding: 0 }}>{tr("Editar")}</button>
@@ -5546,7 +5681,10 @@ function AvatarPanel({ state, dispatch, toast }) {
         })}
       </div>
 
+      </>)}
+
       {/* --- Malos hábitos --- */}
+      {ver("tienda") && (<>
       <h3 style={{ ...sectionH, fontSize: 13, margin: "0 0 10px" }}>{tr("Lo que te quita vida")}</h3>
       {malos.length === 0 ? (
         <div style={{ ...card, padding: 14, marginBottom: 16, color: C.textLo, fontSize: 12.5, lineHeight: 1.5 }}>
@@ -5599,6 +5737,7 @@ function AvatarPanel({ state, dispatch, toast }) {
         <button onClick={() => setSheet("malo")} style={miniBtn(C.ink3, C.textHi)}>{tr("+ Mal hábito")}</button>
         <button onClick={() => setSheet("articulo")} style={miniBtn(C.ink3, C.textHi)}>{tr("+ Artículo")}</button>
       </div>
+      </>)}
 
       <div style={{ height: 100 }} />
 
@@ -5618,6 +5757,340 @@ function AvatarPanel({ state, dispatch, toast }) {
           etiquetaNum={tr("Precio en monedas")} porDefecto={200} conEmoji
           onSave={(d) => { dispatch({ type: "add", col: "tienda", item: { id: uid(), nombre: d.nombre, precio: d.valor, emoji: d.emoji } }); setSheet(null); }} />
       </Sheet>
+    </div>
+  );
+}
+
+/* ============================================================
+   EL JUEGO — su propia pestaña abajo
+   ============================================================ */
+function GameScreen({ state, dispatch, toast, ai }) {
+  const [tab, setTab] = useState("avatar");
+  const temp = temporadaDe(state);
+  return (
+    <div style={{ padding: "20px 18px 0" }}>
+      <Title kicker={tr("Tu vida, jugada")}>{tr("Juego")}</Title>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, overflowX: "auto", paddingBottom: 4, WebkitOverflowScrolling: "touch" }}>
+        <Chip active={tab === "avatar"} onClick={() => setTab("avatar")}>{tr("Avatar")}</Chip>
+        <Chip active={tab === "mision"} onClick={() => setTab("mision")}>{tr("Misión")}</Chip>
+        <Chip active={tab === "habitos"} onClick={() => setTab("habitos")}>{tr("Hábitos")}</Chip>
+        <Chip active={tab === "tienda"} onClick={() => setTab("tienda")}>{tr("Tienda")}</Chip>
+        <Chip active={tab === "temporada"} onClick={() => setTab("temporada")}>{tr("Temporada")}</Chip>
+        <Chip active={tab === "clan"} onClick={() => setTab("clan")}>{tr("Clan")}</Chip>
+        <Chip active={tab === "retos"} onClick={() => setTab("retos")}>{tr("Retos")}</Chip>
+      </div>
+
+      {/* La temporada siempre a la vista: es el reloj del juego */}
+      {temp && tab !== "temporada" && (
+        <button onClick={() => setTab("temporada")} style={{ ...filaDentro(false), width: "100%", padding: "9px 12px", marginBottom: 14, display: "flex", alignItems: "center", gap: 9, cursor: "pointer", textAlign: "left" }}>
+          <span style={{ fontSize: 14 }}>🏁</span>
+          <span style={{ flex: 1, color: C.textHi, fontWeight: 700, fontSize: 12.5 }}>{temp.nombre}</span>
+          <span style={{ color: temp.diasRestantes <= 3 ? C.bad : C.yellow, fontWeight: 800, fontSize: 12 }}>
+            {temp.diasRestantes === 1 ? tr("último día") : tri("{n} días", { n: temp.diasRestantes })}
+          </span>
+        </button>
+      )}
+
+      {tab === "avatar" && <AvatarPanel state={state} dispatch={dispatch} toast={toast} seccion="avatar" />}
+      {tab === "tienda" && <AvatarPanel state={state} dispatch={dispatch} toast={toast} seccion="tienda" />}
+      {tab === "mision" && <><MisionDeHoy state={state} dispatch={dispatch} toast={toast} onVerBanco={() => setTab("habitos")} /><div style={{ height: 100 }} /></>}
+      {tab === "habitos" && <HabitsPanel state={state} dispatch={dispatch} toast={toast} />}
+      {tab === "temporada" && <TemporadaPanel state={state} dispatch={dispatch} toast={toast} />}
+      {tab === "clan" && <ClanPanel state={state} dispatch={dispatch} toast={toast} />}
+      {tab === "retos" && <ChallengesPanelSuelto state={state} dispatch={dispatch} />}
+    </div>
+  );
+}
+
+/* El banco de hábitos con su propio botón de crear (antes vivía en Cerebro) */
+function HabitsPanel({ state, dispatch, toast }) {
+  const [sheet, setSheet] = useState(false);
+  return (
+    <div>
+      <HabitsList habits={state.habits} dispatch={dispatch} state={state} toast={toast} onAdd={() => setSheet(true)} />
+      <div style={{ height: 122 }} />
+      <FAB onClick={() => setSheet(true)} label={tr("Hábito")} />
+      <Sheet open={sheet} onClose={() => setSheet(false)} title={tr("Nuevo hábito")}>
+        <HabitForm areas={rpgDe(state).areas} onSave={(d) => { dispatch({ type: "add", col: "habits", item: { id: uid(), done: [], ...d } }); setSheet(false); }} />
+      </Sheet>
+    </div>
+  );
+}
+
+function ChallengesPanelSuelto({ state, dispatch }) {
+  const [sheet, setSheet] = useState(false);
+  return (
+    <div>
+      <ChallengesPanel state={state} dispatch={dispatch} onAdd={() => setSheet(true)} />
+      <div style={{ height: 122 }} />
+      <FAB onClick={() => setSheet(true)} label={tr("Reto")} />
+      <Sheet open={sheet} onClose={() => setSheet(false)} title={tr("Nuevo reto con amigos")}>
+        <ChallengeForm onSave={(d) => { dispatch({ type: "add", col: "challenges", item: { id: uid(), ...d } }); setSheet(false); }} />
+      </Sheet>
+    </div>
+  );
+}
+
+/* ============================================================
+   TEMPORADAS — un principio y un final
+   Una racha infinita no motiva: no se gana nunca. Una temporada de 30 o 90
+   días sí, porque tiene meta. Al cerrarla se guarda el resultado y el XP se
+   queda donde está: lo que has aprendido no se borra, solo empieza otra cuenta.
+   ============================================================ */
+const TEMP_DURACIONES = [
+  { k: 30, n: "30 días", d: "Un mes. Para probar algo nuevo." },
+  { k: 90, n: "90 días", d: "Un trimestre. Aquí cambian las cosas de verdad." },
+];
+const diasEntre = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
+
+function temporadaDe(state) {
+  const t = (state.temporadas || []).find((x) => !x.cerrada);
+  if (!t) return null;
+  const hoy = todayISO();
+  const total = Number(t.dias || 30);
+  const pasados = Math.max(0, diasEntre(t.inicio, hoy));
+  return { ...t, total, pasados, diasRestantes: Math.max(0, total - pasados), pct: Math.min(100, (pasados / total) * 100), acabada: pasados >= total };
+}
+
+function TemporadaPanel({ state, dispatch, toast }) {
+  const [sheet, setSheet] = useState(false);
+  const t = temporadaDe(state);
+  const hist = (state.temporadas || []).filter((x) => x.cerrada).sort((a, b) => (b.fin || "").localeCompare(a.fin || ""));
+  const r = rpgDe(state);
+
+  const cerrar = () => {
+    if (!t) return;
+    const marca = { cerrada: true, fin: todayISO(), nivelFin: nivelGlobal(state).nivel, coinsFin: r.coins || 0, xpFin: Object.values(r.xp || {}).reduce((s, v) => s + Number(v || 0), 0) };
+    dispatch({ type: "update", col: "temporadas", id: t.id, patch: marca });
+    toast && toast(tr("Temporada cerrada"), tri("Acabaste en nivel {n}. El XP se queda contigo.", { n: marca.nivelFin }));
+  };
+
+  const abrir = (dias, nombre) => {
+    const g = nivelGlobal(state);
+    dispatch({ type: "add", col: "temporadas", item: { id: uid(), nombre: nombre.trim(), dias, inicio: todayISO(), cerrada: false, nivelIni: g.nivel, xpIni: g.total, coinsIni: r.coins || 0 } });
+    setSheet(false);
+  };
+
+  return (
+    <div>
+      {t ? (
+        <div style={{ ...card, padding: 16, marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
+            <span style={{ color: C.textHi, fontWeight: 900, fontSize: 16 }}>{t.nombre}</span>
+            <span style={{ color: t.diasRestantes <= 3 ? C.bad : C.yellow, fontWeight: 900, fontSize: 13 }}>
+              {t.acabada ? tr("Terminada") : t.diasRestantes === 1 ? tr("Último día") : tri("Quedan {n} días", { n: t.diasRestantes })}
+            </span>
+          </div>
+          <div style={{ height: 10, borderRadius: 999, background: C.rail, overflow: "hidden", marginBottom: 8 }}>
+            <div style={{ width: `${t.pct}%`, height: "100%", background: t.acabada ? C.good : C.yellow, borderRadius: 999, transition: "width .4s" }} />
+          </div>
+          <div style={{ color: C.textLo, fontSize: 11.5, marginBottom: 12 }}>{tri("Día {n} de {m}", { n: Math.min(t.pasados + 1, t.total), m: t.total })}</div>
+
+          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            <div style={{ ...filaDentro(false), flex: 1, padding: "9px 11px" }}>
+              <div style={{ color: C.textLo, fontSize: 10, fontWeight: 800, letterSpacing: 0.5 }}>{tr("NIVEL")}</div>
+              <div style={{ color: C.textHi, fontWeight: 900, fontSize: 15 }}>{t.nivelIni} → {nivelGlobal(state).nivel}</div>
+            </div>
+            <div style={{ ...filaDentro(false), flex: 1, padding: "9px 11px" }}>
+              <div style={{ color: C.textLo, fontSize: 10, fontWeight: 800, letterSpacing: 0.5 }}>{tr("XP GANADO")}</div>
+              <div style={{ color: C.yellow, fontWeight: 900, fontSize: 15 }}>+{Math.max(0, nivelGlobal(state).total - Number(t.xpIni || 0))}</div>
+            </div>
+          </div>
+
+          <PrimaryBtn full color={t.acabada ? C.good : C.ink3} onClick={cerrar}>
+            <Check size={18} strokeWidth={3} /> {t.acabada ? tr("Cerrar y guardar el resultado") : tr("Cerrarla antes de tiempo")}
+          </PrimaryBtn>
+        </div>
+      ) : (
+        <div style={{ ...card, padding: 18, marginBottom: 14, textAlign: "center" }}>
+          <div style={{ fontSize: 30, marginBottom: 6 }}>🏁</div>
+          <div style={{ color: C.textHi, fontWeight: 900, fontSize: 16, marginBottom: 5 }}>{tr("Sin temporada abierta")}</div>
+          <div style={{ color: C.textLo, fontSize: 13, lineHeight: 1.5, marginBottom: 14 }}>
+            {tr("Una racha infinita no se gana nunca. Ponle fecha de final y verás la diferencia.")}
+          </div>
+          <PrimaryBtn full onClick={() => setSheet(true)}><Plus size={17} strokeWidth={3} /> {tr("Empezar temporada")}</PrimaryBtn>
+        </div>
+      )}
+
+      {hist.length > 0 && (
+        <>
+          <h3 style={{ ...sectionH, fontSize: 13, margin: "0 0 10px" }}>{tr("Temporadas cerradas")}</h3>
+          <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
+            {hist.map((h) => (
+              <div key={h.id} style={{ ...card, padding: 13, display: "flex", alignItems: "center", gap: 11 }}>
+                <span style={{ fontSize: 17 }}>🏆</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ color: C.textHi, fontWeight: 700, fontSize: 13.5 }}>{h.nombre}</div>
+                  <div style={{ color: C.textLo, fontSize: 11.5 }}>{fmtDate(h.inicio)} → {fmtDate(h.fin)}</div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ color: C.yellow, fontWeight: 900, fontSize: 13 }}>{tri("Nv {n}", { n: h.nivelFin || h.nivelIni || 1 })}</div>
+                  <div style={{ color: C.good, fontSize: 11, fontWeight: 700 }}>+{Math.max(0, Number(h.xpFin || 0) - Number(h.xpIni || 0))} XP</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      <div style={{ height: 100 }} />
+      <Sheet open={sheet} onClose={() => setSheet(false)} title={tr("Nueva temporada")}>
+        <TemporadaForm onSave={abrir} />
+      </Sheet>
+    </div>
+  );
+}
+
+function TemporadaForm({ onSave }) {
+  const [nombre, setNombre] = useState("");
+  const [dias, setDias] = useState(30);
+  return (
+    <div>
+      <Field label={tr("¿Cómo la llamas?")}>
+        <input style={inputStyle} value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder={tr("Ej. Verano en forma, Ahorrar para el coche…")} autoFocus />
+      </Field>
+      <Field label={tr("¿Cuánto dura?")}>
+        <div style={{ display: "grid", gap: 8 }}>
+          {TEMP_DURACIONES.map((d) => (
+            <button key={d.k} onClick={() => setDias(d.k)} style={{ ...filaDentro(dias === d.k, C.yellow), padding: "11px 13px", cursor: "pointer", textAlign: "left" }}>
+              <div style={{ color: C.textHi, fontWeight: 800, fontSize: 14 }}>{tr(d.n)}</div>
+              <div style={{ color: C.textLo, fontSize: 12 }}>{tr(d.d)}</div>
+            </button>
+          ))}
+        </div>
+      </Field>
+      <PrimaryBtn full onClick={() => nombre.trim() && onSave(dias, nombre)}>
+        <Check size={18} strokeWidth={3} /> {tr("Empezar")}
+      </PrimaryBtn>
+    </div>
+  );
+}
+
+/* ============================================================
+   CLAN Y CLASIFICACIÓN — competir sin montar un servidor
+   Aquí no hay backend: cada uno genera su CARTA (un código) y la pasa por
+   WhatsApp. Al pegarla, entra en la clasificación del clan. Es exactamente el
+   mismo truco que ya usan los Grupos de gastos, y tiene una ventaja seria: los
+   datos de tus amigos no viven en ningún servidor mío.
+   El bote es en Brosin Coins, nunca en euros: un bote con dinero real es juego
+   de azar y necesita licencia. Eso es una conversación para el gestor.
+   ============================================================ */
+function miCarta(state) {
+  const g = nivelGlobal(state);
+  const r = rpgDe(state);
+  const rachas = (state.habits || []).map((h) => streakOf(new Set(h.done || [])));
+  return {
+    id: state.profile.deviceId || (state.profile.name || "yo"),
+    nombre: state.profile.name || tr("Yo"),
+    nivel: g.nivel, xp: g.total, coins: r.coins || 0,
+    racha: rachas.length ? Math.max(...rachas) : 0,
+    at: nowISO(),
+  };
+}
+
+function ClanPanel({ state, dispatch, toast }) {
+  const [sheet, setSheet] = useState(null); // 'nuevo' | 'pegar' | 'carta'
+  const clan = (state.clanes || [])[0] || null;
+  const yo = miCarta(state);
+
+  const gente = clan ? [yo, ...(clan.miembros || []).filter((m) => m.id !== yo.id)] : [yo];
+  const tabla = [...gente].sort((a, b) => (b.nivel - a.nivel) || (b.xp - a.xp) || (b.racha - a.racha));
+  const bote = tabla.reduce((s, m) => s + Number(m.apuesta || 0), 0);
+
+  const pegar = (code) => {
+    let obj = null;
+    try { obj = decodeShare(code); } catch (e) {}
+    if (!obj || obj.kind !== "brosin-carta" || !obj.carta) { toast && toast("✗", tr("Ese código no es una carta de Brosin")); return; }
+    if (!clan) { toast && toast("✗", tr("Crea tu clan primero")); return; }
+    const otros = (clan.miembros || []).filter((m) => m.id !== obj.carta.id);
+    dispatch({ type: "update", col: "clanes", id: clan.id, patch: { miembros: [...otros, obj.carta] } });
+    setSheet(null);
+    toast && toast(tr("Dentro del clan"), tri("{n} ya está en la clasificación.", { n: obj.carta.nombre }));
+  };
+
+  return (
+    <div>
+      {!clan ? (
+        <div style={{ ...card, padding: 18, marginBottom: 14, textAlign: "center" }}>
+          <div style={{ fontSize: 30, marginBottom: 6 }}>🛡️</div>
+          <div style={{ color: C.textHi, fontWeight: 900, fontSize: 16, marginBottom: 5 }}>{tr("Sin clan")}</div>
+          <div style={{ color: C.textLo, fontSize: 13, lineHeight: 1.5, marginBottom: 14 }}>
+            {tr("Monta un clan con tus colegas: cada uno pasa su carta y veis quién va por delante. Sin servidor, sin cuentas, sin que nadie guarde vuestros datos.")}
+          </div>
+          <PrimaryBtn full onClick={() => setSheet("nuevo")}><Plus size={17} strokeWidth={3} /> {tr("Crear clan")}</PrimaryBtn>
+        </div>
+      ) : (
+        <>
+          <div style={{ ...card, padding: 16, marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+              <span style={{ fontSize: 20 }}>🛡️</span>
+              <span style={{ flex: 1, color: C.textHi, fontWeight: 900, fontSize: 16 }}>{clan.nombre}</span>
+              <button onClick={() => dispatch({ type: "remove", col: "clanes", id: clan.id })} style={{ ...iconBtn, width: 30, height: 30, color: C.textLo }}><Trash2 size={13} /></button>
+            </div>
+            <div style={{ color: C.textLo, fontSize: 12 }}>{tri("{n} en la clasificación", { n: tabla.length })}{bote > 0 ? tri(" · bote de {b} monedas", { b: bote }) : ""}</div>
+          </div>
+
+          <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
+            {tabla.map((m, i) => {
+              const soyYo = m.id === yo.id;
+              const medalla = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : String(i + 1);
+              return (
+                <div key={m.id + i} style={{ ...filaDentro(soyYo, C.yellow), padding: "11px 13px", display: "flex", alignItems: "center", gap: 11 }}>
+                  <span style={{ width: 24, textAlign: "center", fontSize: i < 3 ? 17 : 13, fontWeight: 900, color: C.textLo }}>{medalla}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ color: C.textHi, fontWeight: soyYo ? 900 : 700, fontSize: 14 }}>{m.nombre}{soyYo ? tr(" (tú)") : ""}</div>
+                    <div style={{ color: C.textLo, fontSize: 11.5 }}>{tri("{x} XP · racha de {r}", { x: m.xp, r: m.racha })}</div>
+                  </div>
+                  <span style={{ color: C.yellow, fontWeight: 900, fontSize: 13.5 }}>{tri("Nv {n}", { n: m.nivel })}</span>
+                </div>
+              );
+            })}
+          </div>
+
+          <div style={{ color: C.textLo, fontSize: 11.5, lineHeight: 1.45, marginBottom: 12 }}>
+            {tr("Las cartas son una foto del momento: pídeles una nueva de vez en cuando para que la clasificación esté al día.")}
+          </div>
+
+          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            <button onClick={() => setSheet("carta")} style={miniBtn(C.yellow, C.ink)}>{tr("Mi carta")}</button>
+            <button onClick={() => setSheet("pegar")} style={miniBtn(C.ink3, C.textHi)}>{tr("Pegar una carta")}</button>
+          </div>
+        </>
+      )}
+
+      <div style={{ height: 100 }} />
+
+      <Sheet open={sheet === "nuevo"} onClose={() => setSheet(null)} title={tr("Nuevo clan")}>
+        <SimpleNameForm placeholder={tr("Ej. Los de siempre")} onSave={(nombre) => { dispatch({ type: "add", col: "clanes", item: { id: uid(), nombre, miembros: [] } }); setSheet(null); }} />
+      </Sheet>
+      <Sheet open={sheet === "carta"} onClose={() => setSheet(null)} title={tr("Tu carta")}>
+        <CartaPanel carta={yo} toast={toast} />
+      </Sheet>
+      <Sheet open={sheet === "pegar"} onClose={() => setSheet(null)} title={tr("Pegar la carta de un amigo")}>
+        <ImportGroupForm onImport={pegar} />
+      </Sheet>
+    </div>
+  );
+}
+
+function CartaPanel({ carta, toast }) {
+  const code = encodeShare({ kind: "brosin-carta", v: 1, carta });
+  const [copiado, setCopiado] = useState(false);
+  const copiar = () => { try { navigator.clipboard && navigator.clipboard.writeText(code); setCopiado(true); setTimeout(() => setCopiado(false), 2000); } catch (e) {} };
+  return (
+    <div>
+      <div style={{ ...card, padding: 16, marginBottom: 12, textAlign: "center" }}>
+        <div style={{ color: C.textHi, fontWeight: 900, fontSize: 18 }}>{carta.nombre}</div>
+        <div style={{ color: C.yellow, fontWeight: 900, fontSize: 26, margin: "4px 0" }}>{tri("Nv {n}", { n: carta.nivel })}</div>
+        <div style={{ color: C.textLo, fontSize: 12.5 }}>{tri("{x} XP · racha de {r} · {c} monedas", { x: carta.xp, r: carta.racha, c: carta.coins })}</div>
+      </div>
+      <div style={{ ...card, padding: 12, background: C.well, maxHeight: 120, overflow: "auto", marginBottom: 12 }}>
+        <code style={{ color: C.yellow, fontSize: 11, wordBreak: "break-all", fontFamily: "monospace" }}>{code}</code>
+      </div>
+      <PrimaryBtn full onClick={copiar}>
+        {copiado ? <><Check size={18} strokeWidth={3} /> {tr("Copiado")}</> : <><Copy size={18} /> {tr("Copiar y mandar")}</>}
+      </PrimaryBtn>
     </div>
   );
 }
@@ -6874,9 +7347,6 @@ function BrainScreen({ state, dispatch, ai, toast }) {
 
       <div style={{ display: "flex", gap: 8, marginBottom: 16, overflowX: "auto", paddingBottom: 4 }}>
         <Chip active={tab === "objetivos"} onClick={() => setTab("objetivos")} accent={C.purple}>{tr("Objetivos")}</Chip>
-        <Chip active={tab === "habitos"} onClick={() => setTab("habitos")} accent={C.purple}>{tr("Hábitos")}</Chip>
-        <Chip active={tab === "avatar"} onClick={() => setTab("avatar")} accent={C.purple}>{tr("Avatar")}</Chip>
-        <Chip active={tab === "retos"} onClick={() => setTab("retos")} accent={C.purple}>{tr("Retos")}</Chip>
         <Chip active={tab === "notas"} onClick={() => setTab("notas")} accent={C.purple}>{tr("Notas")}</Chip>
       </div>
 
@@ -6888,16 +7358,6 @@ function BrainScreen({ state, dispatch, ai, toast }) {
             {state.goals.map((g) => <GoalCard key={g.id} g={g} dispatch={dispatch} onEdit={() => { setEditGoal(g); setSheet("goal"); }} />)}
           </div>
         )
-      )}
-
-      {tab === "habitos" && (
-        <HabitsList habits={state.habits} dispatch={dispatch} onAdd={() => setSheet("habit")} state={state} toast={toast} />
-      )}
-
-      {tab === "avatar" && <AvatarPanel state={state} dispatch={dispatch} toast={toast} />}
-
-      {tab === "retos" && (
-        <ChallengesPanel state={state} dispatch={dispatch} onAdd={() => setSheet("challenge")} />
       )}
 
       {tab === "notas" && (
@@ -6923,7 +7383,7 @@ function BrainScreen({ state, dispatch, ai, toast }) {
       )}
 
       <div style={{ height: 122 }} />
-      {tab !== "avatar" && <FAB onClick={() => { setEditGoal(null); setSheet(tab === "notas" ? "note" : tab === "habitos" ? "habit" : tab === "retos" ? "challenge" : "goal"); }} label={tab === "notas" ? tr("Nota") : tab === "habitos" ? tr("Hábito") : tab === "retos" ? tr("Reto") : tr("Objetivo")} />}
+      <FAB onClick={() => { setEditGoal(null); setSheet(tab === "notas" ? "note" : "goal"); }} label={tab === "notas" ? tr("Nota") : tr("Objetivo")} />
 
       <Sheet open={sheet === "goal"} onClose={() => { setSheet(null); setEditGoal(null); }} title={editGoal ? "Editar objetivo" : "Nuevo objetivo"}>
         <GoalForm initial={editGoal} onSave={(d) => { if (editGoal) dispatch({ type: "update", col: "goals", id: editGoal.id, patch: d }); else dispatch({ type: "add", col: "goals", item: { id: uid(), steps: [], ...d } }); setSheet(null); setEditGoal(null); }} />
@@ -8546,6 +9006,7 @@ function TabBar({ active, onChange, ai }) {
     { key: "home", label: tr("Hoy"), icon: Home },
     { key: "agenda", label: tr("Agenda"), icon: CalendarDays },
     { key: "dinero", label: tr("Dinero"), icon: Wallet },
+    { key: "juego", label: tr("Juego"), icon: Flag },
     { key: "cerebro", label: tr("Vida"), icon: Brain },
   ];
   return (
@@ -9145,6 +9606,7 @@ export default function BrosinOS() {
               {tab === "dinero" && <MoneyScreen state={state} dispatch={dispatch} tab={moneyTab} setTab={setMoneyTab} toast={pushToast} ai={ai} />}
               {/* la vieja pestaña Colección: si alguien llega aquí desde un atajo antiguo, lo mandamos a su nuevo sitio */}
               {tab === "coleccion" && <MoneyScreen state={state} dispatch={dispatch} tab={"colecciones"} setTab={(t) => { setMoneyTab(t); setTab("dinero"); }} toast={pushToast} ai={ai} />}
+              {tab === "juego" && <GameScreen state={state} dispatch={dispatch} toast={pushToast} ai={ai} />}
               {tab === "cerebro" && <BrainScreen state={state} dispatch={dispatch} ai={ai} toast={pushToast} />}
               {tab === "camara" && <CameraScreen state={state} dispatch={dispatch} back={() => setTab("home")} toast={pushToast} />}
               {tab === "personas" && <PeopleScreen state={state} dispatch={dispatch} back={() => setTab("home")} />}
