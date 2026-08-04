@@ -25,7 +25,7 @@ import {
    diccionario activo; si falta, devuelve el español (nunca se ve un hueco).
    Diccionarios: /i18n/{lang}.json — se descargan solo al elegir el idioma y
    quedan cacheados. El marco remonta con key={...lang} al cambiar. */
-const I18N_VER = "41"; // rompe la caché del SW al subir versión
+const I18N_VER = "44"; // rompe la caché del SW al subir versión
 const LANGS = [
   { k: "auto", label: "Automático" },
   { k: "es", label: "Español", flag: "🇪🇸", locale: "es-ES" },
@@ -327,7 +327,6 @@ function applyTheme(mode) {
 const AREAS = [
   { key: "agenda", label: tr("Agenda"), icon: CalendarDays },
   { key: "dinero", label: tr("Dinero"), icon: Wallet },
-  { key: "coleccion", label: "Colecciones", icon: Package },
   { key: "cerebro", label: "Objetivos", icon: Target },
 ];
 
@@ -1138,6 +1137,8 @@ const EMPTY = {
   rpg: null,
   malos: [],
   tienda: [],
+  pruebas: [],   // evidencias de hábitos cumplidos (foto pequeña, texto o número)
+  diario: [],    // la nota del día, una por fecha
   // Marcas de borrado: { coleccion: { id: fechaISO } }. Sin esto, al fusionar
   // dos dispositivos lo borrado en uno "revive" desde el otro.
   _tomb: {},
@@ -1208,6 +1209,71 @@ function rpgEstado(state) {
   return { ...r, muerto: true, ganado, falta: Math.max(0, RPG_META_REVIVIR - ganado), horasRestantes, puedeRevivir: ganado >= RPG_META_REVIVIR };
 }
 
+/* ============================================================
+   LA MISIÓN DE HOY — cinco hábitos, no una lista infinita
+   Puedes tener treinta hábitos en el banco, ordenados por área. Pero cada día
+   solo cinco están EN LA MESA: esos son los que suman y los únicos que restan
+   vida si los dejas sin hacer. Los demás siguen dando premio si te apetece
+   hacerlos, pero no te castigan. Foco sin tener que renunciar a nada.
+   ============================================================ */
+const MISION_TAM = 5;
+const CASTIGO_POR_FALLO = 20;   // vida que cuesta cada hábito del día sin marcar
+
+const misionDe = (state) => (rpgDe(state).mision) || null;
+
+/* Elegir los cinco del día cuando no los has elegido tú: primero lo que llevas
+   más tiempo sin tocar, y repartiendo entre áreas para que no salgan cinco de
+   la misma. */
+function proponerMision(state, iso) {
+  const habs = (state.habits || []).filter((h) => !h.pausado);
+  if (!habs.length) return [];
+  const ultimaVez = (h) => { const d = (h.done || []); return d.length ? d[d.length - 1] : "0000-00-00"; };
+  const orden = [...habs].sort((a, b) => ultimaVez(a).localeCompare(ultimaVez(b)));
+  const elegidos = [], areasUsadas = new Set();
+  for (const h of orden) { // primera vuelta: una por área
+    if (elegidos.length >= MISION_TAM) break;
+    const a = h.area || "salud";
+    if (areasUsadas.has(a)) continue;
+    areasUsadas.add(a); elegidos.push(h.id);
+  }
+  for (const h of orden) { // segunda vuelta: rellenar
+    if (elegidos.length >= MISION_TAM) break;
+    if (!elegidos.includes(h.id)) elegidos.push(h.id);
+  }
+  return elegidos;
+}
+
+/* Los hábitos de hoy, resueltos: la misión guardada si es de hoy, y si no una
+   propuesta fresca. Devuelve los objetos, no los ids, para pintar directo. */
+function habitosDeHoy(state, iso) {
+  const t = iso || todayISO();
+  const m = misionDe(state);
+  const ids = (m && m.d === t && Array.isArray(m.ids)) ? m.ids : proponerMision(state, t);
+  const porId = new Map((state.habits || []).map((h) => [h.id, h]));
+  return ids.map((id) => porId.get(id)).filter(Boolean);
+}
+
+/* El cierre del día: al abrir la app, si quedó una misión de un día anterior
+   sin cerrar, se pasa cuenta. No hace falta ningún temporizador — el castigo
+   se aplica la próxima vez que aparezcas, que es cuando te enteras. */
+function cierreDelDia(state, iso) {
+  const t = iso || todayISO();
+  const m = misionDe(state);
+  if (!m || !m.d || m.d >= t || m.cerrado) return null;
+  const porId = new Map((state.habits || []).map((h) => [h.id, h]));
+  const fallados = (m.ids || []).map((id) => porId.get(id)).filter((h) => h && !(h.done || []).includes(m.d));
+  return { dia: m.d, fallados, coste: fallados.length * CASTIGO_POR_FALLO };
+}
+
+/* Qué prueba pide un hábito para darlo por hecho. Sin prueba también vale —
+   es tu app, no la de nadie más — pero con prueba no te engañas. */
+const PRUEBAS = [
+  { k: "ninguna", n: "Sin prueba", e: "—" },
+  { k: "foto", n: "Foto con hora", e: "📷" },
+  { k: "texto", n: "Escribir algo", e: "✍️" },
+  { k: "numero", n: "Un número", e: "🔢" },
+];
+
 /* Recompensa de un hábito. La dificultad multiplica: lo que cuesta más, paga
    más. Curar al cumplir es lo que hace que el juego se pueda ganar — si solo
    restaran los malos hábitos, morir sería cuestión de tiempo. */
@@ -1225,11 +1291,22 @@ function premioDeHabito(h) {
 /* Marcar o desmarcar un hábito en un día. Un solo sitio para las dos cosas:
    la racha y el premio. Desmarcar devuelve exactamente lo que dio, para que
    un toque sin querer no infle nada. */
-function marcarHabito(state, dispatch, h, iso, toast) {
+function marcarHabito(state, dispatch, h, iso, toast, prueba) {
   const set = new Set(h.done || []);
   const estaba = set.has(iso);
   if (estaba) set.delete(iso); else set.add(iso);
   dispatch({ type: "update", col: "habits", id: h.id, patch: { done: [...set] } });
+
+  // La prueba: se guarda al marcar y se retira al desmarcar. La foto va
+  // reducida a un pulgar pequeño — el almacén del móvil es limitado y esta app
+  // ya se quedó una vez sin sitio.
+  if (!estaba && prueba && prueba.tipo && prueba.tipo !== "ninguna") {
+    dispatch({ type: "add", col: "pruebas", item: { id: uid(), habitId: h.id, date: iso, at: nowISO(), tipo: prueba.tipo, texto: prueba.texto || "", img: prueba.img || "" } });
+  }
+  if (estaba) {
+    const vieja = (state.pruebas || []).find((p) => p.habitId === h.id && p.date === iso);
+    if (vieja) dispatch({ type: "remove", col: "pruebas", id: vieja.id });
+  }
 
   const r = rpgDe(state);
   if (r.muertoDesde) return; // muerto no se gana nada: primero hay que volver
@@ -2682,6 +2759,7 @@ function StreakPanel({ state, streak }) {
 function HomeScreen({ state, dispatch, go, ai, openMarkets, toast }) {
   const [calcOpen, setCalcOpen] = useState(false);
   const [ideaOpen, setIdeaOpen] = useState(false);
+  const [masTools, setMasTools] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [streakOpen, setStreakOpen] = useState(false);
   const [briefOpen, setBriefOpen] = useState(false);
@@ -2815,44 +2893,30 @@ function HomeScreen({ state, dispatch, go, ai, openMarkets, toast }) {
 
         {homeTab === "vistazo" && (
           <>
-            {/* Herramientas y hábitos arriba del todo: es lo primero que se ve al abrir la app */}
-            <h3 style={{ ...sectionH, fontSize: 13.5, margin: "0 0 12px" }}>{tr("Herramientas")}</h3>
+            {/* La misión manda: es lo primero que se ve al abrir la app */}
+            <MisionDeHoy state={state} dispatch={dispatch} toast={toast} onVerBanco={() => go("cerebro")} />
+
+            {/* Antes había ocho herramientas siempre a la vista y llenaban media
+                pantalla. Ahora se ven las cuatro de siempre y las otras cuatro
+                están a un toque. */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "0 0 12px" }}>
+              <h3 style={{ ...sectionH, fontSize: 13.5, margin: 0 }}>{tr("Herramientas")}</h3>
+              <button onClick={() => setMasTools((v) => !v)} style={{ background: "none", border: "none", color: C.yellow, fontWeight: 800, fontSize: 12, cursor: "pointer", padding: 0 }}>
+                {masTools ? tr("Menos") : tr("Ver todas")}
+              </button>
+            </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 18 }}>
               <ToolButton icon={Camera} label={tr("Cámara")} accent={C.yellow} anim="camera" onClick={() => go("camara")} />
               <ToolButton icon={Lightbulb} label={tr("Idea")} accent={C.purple} anim="bulb" onClick={() => setIdeaOpen(true)} />
               <ToolButton icon={Calculator} label={tr("Calcular")} accent={C.yellow} anim="calc" onClick={() => setCalcOpen(true)} />
-              <ToolButton icon={Cake} label={tr("Cumpleaños")} accent={C.purple} anim="cake" onClick={() => go("personas")} />
-              <ToolButton icon={Users} label={tr("Equipo")} accent={C.purple} anim="team" onClick={() => go("equipo")} />
               <ToolButton icon={LineChart} label={tr("Mercados")} accent={C.yellow} anim="chart" onClick={openMarkets} />
-              <ToolButton icon={Car} label={tr("Conducción")} accent={C.purple} active={state.drive?.active} anim="car" onClick={() => go("conduccion")} />
-              <ToolButton icon={Smartphone} label={tr("Pantalla")} accent={C.yellow} anim="phone" onClick={() => go("pantalla")} />
+              {masTools && <>
+                <ToolButton icon={Cake} label={tr("Cumpleaños")} accent={C.purple} anim="cake" onClick={() => go("personas")} />
+                <ToolButton icon={Users} label={tr("Equipo")} accent={C.purple} anim="team" onClick={() => go("equipo")} />
+                <ToolButton icon={Car} label={tr("Conducción")} accent={C.purple} active={state.drive?.active} anim="car" onClick={() => go("conduccion")} />
+                <ToolButton icon={Smartphone} label={tr("Pantalla")} accent={C.yellow} anim="phone" onClick={() => go("pantalla")} />
+              </>}
             </div>
-
-            {(() => {
-              const hoyISO = todayISO();
-              const habs = state.habits || [];
-              if (!habs.length) return null;
-              const hechos = habs.filter((h) => (h.done || []).includes(hoyISO)).length;
-              return (
-                <>
-                  <h3 style={{ ...sectionH, fontSize: 13.5, margin: "0 0 10px", display: "flex", alignItems: "center", gap: 8 }}>
-                    {tr("Hábitos de hoy")}
-                    <span style={{ color: hechos === habs.length ? C.good : C.textLo, fontSize: 11.5, fontWeight: 800 }}>{hechos}/{habs.length}</span>
-                  </h3>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 18 }}>
-                    {habs.map((h) => {
-                      const hecho = (h.done || []).includes(hoyISO);
-                      return (
-                        <button key={h.id} onClick={() => marcarHabito(state, dispatch, h, hoyISO, toast)}
-                          style={{ borderRadius: 999, padding: "7px 13px", fontSize: 12.5, fontWeight: 800, cursor: "pointer", border: `1.5px solid ${hecho ? C.good : C.line}`, background: hecho ? "rgba(61,220,132,.15)" : "transparent", color: hecho ? C.good : C.textHi }}>
-                          {hecho ? "✓ " : ""}{h.name}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </>
-              );
-            })()}
 
             {ai && <div style={{ marginBottom: 14 }}><AiBrief ai={ai} state={state} /></div>}
             {birthday && (
@@ -2869,9 +2933,10 @@ function HomeScreen({ state, dispatch, go, ai, openMarkets, toast }) {
               <StatCard label={tr("Balance")} value={money(balance)} icon={Wallet} accent={balance >= 0 ? C.good : C.bad} onClick={() => go("dinero")} />
               <StatCard label={tr("Te deben")} value={money(owedToMe)} icon={HandCoins} accent={C.yellow} onClick={() => go("dinero")} />
               <StatCard label={tr("Objetivos vivos")} value={goalsActive} icon={Target} accent={C.purple} onClick={() => go("cerebro")} />
-              <StatCard label={tr("Fiados fuera")} value={fiadosOut} icon={Gift} accent={C.yellow} onClick={() => go("coleccion")} />
+              <StatCard label={tr("Fiados fuera")} value={fiadosOut} icon={Gift} accent={C.yellow} onClick={() => go("dinero", "fiados")} />
             </div>
             <SleepCard state={state} dispatch={dispatch} toast={toast} />
+            <DiarioCard state={state} dispatch={dispatch} />
             <DailyQuote />
           </>
         )}
@@ -3145,6 +3210,229 @@ ${buildMemory(state)}` + aiLangRule("json");
           <SpeakBtn text={reply.text} tone={C.purple} />
         </div>
       )}
+    </div>
+  );
+}
+
+/* Fila DENTRO de un panel: pintura, no cristal. Un desenfoque encima de otro
+   no se distingue, cuesta el doble de pintar y — lo peor — el brillo blanco del
+   cristal se come el texto. Se veía clarísimo: la fila sin marcar salía casi
+   blanca con la letra gris encima. */
+const filaDentro = (activo, acento) => ({
+  background: activo ? "rgba(61,220,132,.12)" : C.ink3,
+  border: `1px solid ${activo ? (acento || C.good) : C.line}`,
+  borderRadius: 14,
+  transition: "background .2s, border-color .2s",
+});
+
+/* ============================================================
+   MISIÓN DE HOY — la tarjeta que manda en el inicio
+   ============================================================ */
+function MisionDeHoy({ state, dispatch, toast, onVerBanco }) {
+  const hoy = todayISO();
+  const lista = habitosDeHoy(state, hoy);
+  const [pidiendo, setPidiendo] = useState(null); // hábito esperando su prueba
+  const hechos = lista.filter((h) => (h.done || []).includes(hoy)).length;
+  const pct = lista.length ? (hechos / lista.length) * 100 : 0;
+  const areas = rpgDe(state).areas || AREAS_DEFECTO;
+  const emojiDe = (k) => (areas.find((a) => a.k === k) || {}).e || "•";
+
+  // Fijar la misión en cuanto la tocas: así no cambia sola a mitad del día.
+  const fijar = () => {
+    const m = misionDe(state);
+    if (!m || m.d !== hoy) dispatch({ type: "rpg", payload: { mision: { d: hoy, ids: lista.map((h) => h.id), cerrado: false } } });
+  };
+
+  const tocar = (h) => {
+    fijar();
+    const hecho = (h.done || []).includes(hoy);
+    if (!hecho && h.prueba && h.prueba !== "ninguna") { setPidiendo(h); return; }
+    marcarHabito(state, dispatch, h, hoy, toast);
+  };
+
+  if (!lista.length) {
+    return (
+      <div style={{ ...card, padding: 16, marginBottom: 18 }}>
+        <div style={{ color: C.textHi, fontWeight: 900, fontSize: 15, marginBottom: 4 }}>{tr("Tu misión de hoy")}</div>
+        <div style={{ color: C.textLo, fontSize: 13, lineHeight: 1.5, marginBottom: 12 }}>
+          {tr("Crea tus hábitos y cada día te pongo cinco en la mesa. Solo esos cinco te quitan vida si los dejas.")}
+        </div>
+        <button onClick={onVerBanco} style={{ ...miniBtn(C.yellow, C.ink), width: "100%" }}>{tr("Crear mi primer hábito")}</button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ ...card, padding: 16, marginBottom: 18 }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
+        <span style={{ color: C.textHi, fontWeight: 900, fontSize: 15 }}>{tr("Tu misión de hoy")}</span>
+        <span style={{ color: hechos === lista.length ? C.good : C.yellow, fontWeight: 900, fontSize: 15, fontVariantNumeric: "tabular-nums" }}>{hechos}/{lista.length}</span>
+      </div>
+
+      <div style={{ height: 8, borderRadius: 999, background: C.rail, overflow: "hidden", marginBottom: 12 }}>
+        <div style={{ width: `${pct}%`, height: "100%", background: hechos === lista.length ? C.good : C.yellow, borderRadius: 999, transition: "width .4s" }} />
+      </div>
+
+      <div style={{ display: "grid", gap: 7 }}>
+        {lista.map((h) => {
+          const hecho = (h.done || []).includes(hoy);
+          const p = premioDeHabito(h);
+          return (
+            <button key={h.id} onClick={() => tocar(h)} style={{
+              ...filaDentro(hecho), padding: "10px 12px", display: "flex", alignItems: "center", gap: 10,
+              cursor: "pointer", textAlign: "left",
+            }}>
+              <span style={{
+                width: 22, height: 22, borderRadius: 7, flexShrink: 0, display: "grid", placeItems: "center",
+                background: hecho ? C.good : "transparent", border: `2px solid ${hecho ? C.good : C.line}`,
+              }}>{hecho && <Check size={13} color={C.ink} strokeWidth={4} />}</span>
+              <span style={{ fontSize: 15 }}>{emojiDe(h.area)}</span>
+              <span style={{ flex: 1, minWidth: 0, color: hecho ? C.textLo : C.textHi, fontWeight: 700, fontSize: 13.5, textDecoration: hecho ? "line-through" : "none" }}>{h.name}</span>
+              {h.prueba && h.prueba !== "ninguna" && <span style={{ fontSize: 12, opacity: 0.75 }}>{(PRUEBAS.find((x) => x.k === h.prueba) || {}).e}</span>}
+              <span style={{ color: hecho ? C.good : C.textLo, fontSize: 11, fontWeight: 800, flexShrink: 0 }}>+{p.xp}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div style={{ color: C.textLo, fontSize: 11, marginTop: 10, lineHeight: 1.45 }}>
+        {tri("Lo que dejes sin marcar te costará {n} de vida al acabar el día.", { n: CASTIGO_POR_FALLO })}
+      </div>
+      <button onClick={onVerBanco} style={{ background: "none", border: "none", color: C.yellow, fontWeight: 800, fontSize: 12, cursor: "pointer", padding: "8px 0 0" }}>{tr("Cambiar los de hoy")}</button>
+
+      <Sheet open={!!pidiendo} onClose={() => setPidiendo(null)} title={pidiendo ? pidiendo.name : ""}>
+        {pidiendo && (
+          <PruebaForm tipo={pidiendo.prueba} onSave={(pr) => { marcarHabito(state, dispatch, pidiendo, hoy, toast, pr); setPidiendo(null); }} />
+        )}
+      </Sheet>
+    </div>
+  );
+}
+
+/* ============================================================
+   EL DIARIO — una nota por día, para siempre y editable
+   Kevin lo dejó claro hace versiones: el pasado se puede corregir. "Por si me
+   equivoqué, que no tengas ya todos mis datos con un error tonto pasado."
+   ============================================================ */
+function DiarioCard({ state, dispatch }) {
+  const hoy = todayISO();
+  const lista = [...(state.diario || [])].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  const deHoy = lista.find((d) => d.date === hoy);
+  const [texto, setTexto] = useState(deHoy ? deHoy.texto : "");
+  const [historial, setHistorial] = useState(false);
+  const [editando, setEditando] = useState(null);
+  const guardado = deHoy && deHoy.texto === texto;
+
+  const guardar = () => {
+    const t = texto.trim();
+    if (!t) return;
+    if (deHoy) dispatch({ type: "update", col: "diario", id: deHoy.id, patch: { texto: t } });
+    else dispatch({ type: "add", col: "diario", item: { id: uid(), date: hoy, texto: t } });
+  };
+
+  return (
+    <div style={{ ...card, padding: 16, marginBottom: 18 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <span style={{ color: C.textHi, fontWeight: 900, fontSize: 15 }}>{tr("El diario")}</span>
+        {lista.length > 0 && (
+          <button onClick={() => setHistorial(true)} style={{ background: "none", border: "none", color: C.yellow, fontWeight: 800, fontSize: 12, cursor: "pointer", padding: 0 }}>
+            {lista.length === 1 ? tr("1 día escrito") : tri("{n} días escritos", { n: lista.length })}
+          </button>
+        )}
+      </div>
+      <textarea value={texto} onChange={(e) => setTexto(e.target.value)} placeholder={tr("¿Qué ha pasado hoy? Dos líneas bastan.")}
+        style={{ ...inputStyle, minHeight: 72, resize: "vertical", marginBottom: 8 }} />
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <button onClick={guardar} disabled={!texto.trim() || guardado} style={{ ...miniBtn(guardado ? C.ink3 : C.yellow, guardado ? C.textLo : C.ink), flex: "0 0 auto", padding: "8px 16px" }}>
+          {guardado ? tr("Guardado ✓") : tr("Guardar")}
+        </button>
+        <span style={{ color: C.textLo, fontSize: 11 }}>{texto.trim().length ? tri("{n} caracteres", { n: texto.trim().length }) : ""}</span>
+      </div>
+
+      <Sheet open={historial} onClose={() => { setHistorial(false); setEditando(null); }} title={tr("Tu diario")}>
+        <div style={{ display: "grid", gap: 10 }}>
+          {lista.map((d) => (
+            <div key={d.id} style={{ ...filaDentro(false), padding: 12, display: "block" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                <span style={{ color: C.yellow, fontWeight: 800, fontSize: 12 }}>{fmtDate(d.date)}</span>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button onClick={() => setEditando(editando === d.id ? null : d.id)} style={{ ...iconBtn, width: 30, height: 30, color: C.textLo }}><Pencil size={13} /></button>
+                  <button onClick={() => dispatch({ type: "remove", col: "diario", id: d.id })} style={{ ...iconBtn, width: 30, height: 30, color: C.textLo }}><Trash2 size={13} /></button>
+                </div>
+              </div>
+              {editando === d.id ? (
+                <textarea defaultValue={d.texto} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== d.texto) dispatch({ type: "update", col: "diario", id: d.id, patch: { texto: v } }); setEditando(null); }}
+                  style={{ ...inputStyle, minHeight: 80, resize: "vertical", marginBottom: 0 }} autoFocus />
+              ) : (
+                <div style={{ color: C.textHi, fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{d.texto}</div>
+              )}
+            </div>
+          ))}
+        </div>
+      </Sheet>
+    </div>
+  );
+}
+
+/* La prueba. La foto se reduce a 260 px antes de guardarse: sin esto, cinco
+   fotos al día llenan el almacén del navegador en una semana y la app deja de
+   guardar (ya nos pasó). */
+function PruebaForm({ tipo, onSave }) {
+  const [texto, setTexto] = useState("");
+  const [img, setImg] = useState("");
+  const [cargando, setCargando] = useState(false);
+  const ref = useRef(null);
+
+  const coger = (file) => {
+    if (!file) return;
+    setCargando(true);
+    const fr = new FileReader();
+    fr.onload = () => {
+      const im = new Image();
+      im.onload = () => {
+        const lado = 260, esc = Math.min(1, lado / Math.max(im.width, im.height));
+        const cv = document.createElement("canvas");
+        cv.width = Math.round(im.width * esc); cv.height = Math.round(im.height * esc);
+        cv.getContext("2d").drawImage(im, 0, 0, cv.width, cv.height);
+        setImg(cv.toDataURL("image/jpeg", 0.55));
+        setCargando(false);
+      };
+      im.onerror = () => setCargando(false);
+      im.src = fr.result;
+    };
+    fr.onerror = () => setCargando(false);
+    fr.readAsDataURL(file);
+  };
+
+  const vale = tipo === "foto" ? !!img : tipo === "texto" ? texto.trim().length >= 20 : tipo === "numero" ? !!String(texto).trim() : true;
+
+  return (
+    <div>
+      {tipo === "foto" && (
+        <Field label={tr("Foto de prueba")}>
+          <input ref={ref} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={(e) => coger(e.target.files && e.target.files[0])} />
+          {img
+            ? <img src={img} alt="" onClick={() => ref.current && ref.current.click()} style={{ width: "100%", borderRadius: 14, display: "block", cursor: "pointer" }} />
+            : <button onClick={() => ref.current && ref.current.click()} style={{ ...iconBtn, width: "100%", height: 120, flexDirection: "column", gap: 8, color: C.textLo }}>
+                <Camera size={26} /> <span style={{ fontSize: 13, fontWeight: 700 }}>{cargando ? tr("Preparando…") : tr("Hacer la foto")}</span>
+              </button>}
+          <div style={{ color: C.textLo, fontSize: 11, marginTop: 6 }}>{tr("Se guarda con la hora exacta.")}</div>
+        </Field>
+      )}
+      {tipo === "texto" && (
+        <Field label={tr("Cuéntalo en dos líneas")}>
+          <textarea style={{ ...inputStyle, minHeight: 90, resize: "vertical" }} value={texto} onChange={(e) => setTexto(e.target.value)} placeholder={tr("Qué has hecho y qué te ha parecido…")} autoFocus />
+          <div style={{ color: texto.trim().length >= 20 ? C.good : C.textLo, fontSize: 11, marginTop: 4 }}>{texto.trim().length}/20</div>
+        </Field>
+      )}
+      {tipo === "numero" && (
+        <Field label={tr("El número")}>
+          <input type="number" inputMode="decimal" style={inputStyle} value={texto} onChange={(e) => setTexto(e.target.value)} placeholder={tr("Ej. minutos, páginas, kilos…")} autoFocus />
+        </Field>
+      )}
+      <PrimaryBtn full color={vale ? C.good : C.ink3} onClick={() => vale && onSave({ tipo, texto: texto.trim(), img })}>
+        <Check size={18} strokeWidth={3} /> {tr("Dar por hecho")}
+      </PrimaryBtn>
     </div>
   );
 }
@@ -3779,7 +4067,49 @@ function FixedForm({ initial, onSave }) {
   );
 }
 
+/* Los tres grupos de Dinero. Colecciones, Objetos, Empresas y Fiados se mudan
+   aquí desde su propia pestaña: son patrimonio y cosas prestadas, o sea, dinero.
+   Una pestaña menos abajo y todo lo que vale algo en el mismo sitio. */
+const GRUPOS_DINERO = [
+  { k: "dia", n: "Día a día", e: "💳", subs: [
+    { k: "movimientos", n: "Movimientos" }, { k: "fijos", n: "Fijos" },
+    { k: "deudas", n: "Deudas" }, { k: "graficas", n: "Gráficas" } ] },
+  { k: "patrimonio", n: "Patrimonio", e: "📈", subs: [
+    { k: "inversiones", n: "Inversiones" }, { k: "mercados", n: "Mercados" },
+    { k: "ahorro", n: "Ahorro" }, { k: "objetos", n: "Objetos" },
+    { k: "colecciones", n: "Colecciones" }, { k: "empresas", n: "Empresas y artistas" } ] },
+  { k: "otros", n: "Con otros", e: "🤝", subs: [
+    { k: "compartida", n: "Compartida" }, { k: "grupos", n: "Grupos" },
+    { k: "fiados", n: "Fiados" } ] },
+];
+const grupoDe = (hoja) => (GRUPOS_DINERO.find((g) => g.subs.some((s) => s.k === hoja)) || GRUPOS_DINERO[0]).k;
+
+/* El selector de grupo: tres piezas grandes, no una fila de pastillas iguales.
+   Lo que se anima es el relleno, nunca el desenfoque (regla del cristal). */
+function SegmentoGrande({ valor, grupos, onChange }) {
+  return (
+    <div style={{ display: "flex", gap: 7, ...glassSurface(16, 10), padding: 5 }}>
+      {grupos.map((g) => {
+        const on = valor === g.k;
+        return (
+          <button key={g.k} onClick={() => onChange(g)} style={{
+            flex: 1, border: "none", cursor: "pointer", borderRadius: 12, padding: "9px 4px",
+            display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
+            background: on ? "linear-gradient(180deg,#ffe561 0%,#eec400 100%)" : "transparent",
+            boxShadow: on ? "0 1px 0 rgba(255,255,255,.45) inset, 0 -1.5px 0 rgba(0,0,0,.18) inset, 0 5px 14px rgba(255,212,0,.3)" : "none",
+            transition: "background .2s, box-shadow .2s",
+          }}>
+            <span style={{ fontSize: 15, lineHeight: 1 }}>{g.e}</span>
+            <span style={{ fontSize: 11.5, fontWeight: on ? 900 : 700, color: on ? C.ink : C.textLo }}>{tr(g.n)}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function MoneyScreen({ state, dispatch, tab, setTab, toast, ai }) {
+  const grupoActivo = grupoDe(tab);
   const [sheet, setSheet] = useState(null); // 'tx' | 'debt' | 'inv'
   const [editInv, setEditInv] = useState(null);
   const [editDebt, setEditDebt] = useState(null);
@@ -3837,19 +4167,22 @@ function MoneyScreen({ state, dispatch, tab, setTab, toast, ai }) {
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 16, overflowX: "auto", paddingBottom: 4, WebkitOverflowScrolling: "touch", scrollSnapType: "x proximity" }}>
-        <Chip active={tab === "movimientos"} onClick={() => setTab("movimientos")}>{tr("Movimientos")}</Chip>
-        <Chip active={tab === "fijos"} onClick={() => setTab("fijos")}>{tr("Fijos")}</Chip>
-        <Chip active={tab === "mercados"} onClick={() => setTab("mercados")}>{tr("Mercados")}</Chip>
-        <Chip active={tab === "graficas"} onClick={() => setTab("graficas")}>{tr("Gráficas")}</Chip>
-        <Chip active={tab === "deudas"} onClick={() => setTab("deudas")}>{tr("Deudas")}</Chip>
-        <Chip active={tab === "inversiones"} onClick={() => setTab("inversiones")}>{tr("Inversiones")}</Chip>
-        <Chip active={tab === "compartida"} onClick={() => setTab("compartida")}>{tr("Compartida")}</Chip>
-        <Chip active={tab === "grupos"} onClick={() => setTab("grupos")}>{tr("Grupos")}</Chip>
-        <Chip active={tab === "ahorro"} onClick={() => setTab("ahorro")}>{tr("Ahorro")}</Chip>
+      {/* Antes había NUEVE pestañas en fila, todas del mismo tamaño: no se veía
+          dónde estaba nada. Ahora son tres grupos con sentido, y dentro de cada
+          uno sus apartados. La hoja activa sigue siendo la misma variable, así
+          que ningún panel de abajo se entera del cambio. */}
+      <SegmentoGrande valor={grupoActivo} grupos={GRUPOS_DINERO} onChange={(g) => setTab(g.subs[0].k)} />
+      <div style={{ display: "flex", gap: 7, margin: "10px 0 16px", overflowX: "auto", paddingBottom: 4, WebkitOverflowScrolling: "touch" }}>
+        {(GRUPOS_DINERO.find((g) => g.k === grupoActivo) || GRUPOS_DINERO[0]).subs.map((s) => (
+          <Chip key={s.k} active={tab === s.k} onClick={() => setTab(s.k)}>{tr(s.n)}</Chip>
+        ))}
       </div>
 
       {tab === "fijos" && <FixedPanel state={state} dispatch={dispatch} />}
+      {/* lo que se mudó desde la antigua pestaña Colección */}
+      {(tab === "objetos" || tab === "colecciones" || tab === "empresas" || tab === "fiados") && (
+        <CollectionScreen state={state} dispatch={dispatch} soloTab={tab} />
+      )}
       {tab === "compartida" && <SharedInvPanel state={state} dispatch={dispatch} />}
       {tab === "grupos" && <GroupsPanel state={state} dispatch={dispatch} toast={toast} />}
       {tab === "ahorro" && <SavingsPanel state={state} dispatch={dispatch} />}
@@ -5181,6 +5514,12 @@ function AvatarPanel({ state, dispatch, toast }) {
         </div>
       )}
 
+      <button onClick={() => setSheet("reglas")} style={{ ...filaDentro(false), width: "100%", padding: "11px 14px", marginBottom: 14, display: "flex", alignItems: "center", gap: 10, cursor: "pointer", textAlign: "left" }}>
+        <span style={{ fontSize: 16 }}>📜</span>
+        <span style={{ flex: 1, color: C.textHi, fontWeight: 700, fontSize: 13.5 }}>{tr("Las reglas del juego")}</span>
+        <ChevronRight size={16} color={C.textLo} />
+      </button>
+
       {/* --- Las nueve áreas --- */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "0 0 10px" }}>
         <h3 style={{ ...sectionH, fontSize: 13, margin: 0 }}>{tr("Tus áreas")}</h3>
@@ -5263,6 +5602,9 @@ function AvatarPanel({ state, dispatch, toast }) {
 
       <div style={{ height: 100 }} />
 
+      <Sheet open={sheet === "reglas"} onClose={() => setSheet(null)} title={tr("Las reglas del juego")}>
+        <Reglamento />
+      </Sheet>
       <Sheet open={sheet === "areas"} onClose={() => setSheet(null)} title={tr("Tus áreas de vida")}>
         <AreasEditor areas={areas} onSave={(list) => { patch({ areas: list }); setSheet(null); }} />
       </Sheet>
@@ -5280,6 +5622,35 @@ function AvatarPanel({ state, dispatch, toast }) {
   );
 }
 
+/* El reglamento. Un juego sin reglas escritas no es un juego, es un capricho.
+   Aquí están las seis que hay, en cristiano. */
+function Reglamento() {
+  const reglas = [
+    { e: "❤️", t: "Empiezas con {n} puntos de vida", d: "Es tu marcador. Ni más ni menos.", v: { n: RPG_VIDA_MAX } },
+    { e: "⭐", t: "Cada día, cinco hábitos en la mesa", d: "Los eliges tú o te los propongo yo, repartidos entre tus áreas. El resto de tu banco sigue ahí y suma si lo haces." },
+    { e: "💀", t: "Lo que dejas sin hacer cuesta {n} de vida", d: "Solo los cinco del día. Se cobra al día siguiente, cuando abres la app.", v: { n: CASTIGO_POR_FALLO } },
+    { e: "🪙", t: "Cumplir da XP a su área y Brosin Coins", d: "Cuanto más te cuesta el hábito, más paga: fácil ×1, normal ×2, duro ×3." },
+    { e: "🛒", t: "Los caprichos se pagan con monedas", d: "En la tiendita te compras lo que quieras sin perder vida. Fuera de ahí, un mal hábito te la quita." },
+    { e: "💶", t: "Si caes a cero, se revive con dinero real", d: "Gana {n} en {h} horas, del modo que sea, y apúntalo en Movimientos. La app lo comprueba sola.", v: { n: money(RPG_META_REVIVIR), h: RPG_HORAS_REVIVIR } },
+  ];
+  return (
+    <div style={{ display: "grid", gap: 10 }}>
+      {reglas.map((r, i) => (
+        <div key={i} style={{ ...filaDentro(false), padding: 13, display: "flex", gap: 11, alignItems: "flex-start" }}>
+          <span style={{ fontSize: 19, lineHeight: "22px" }}>{r.e}</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ color: C.textHi, fontWeight: 800, fontSize: 13.5, marginBottom: 3 }}>{r.v ? tri(r.t, r.v) : tr(r.t)}</div>
+            <div style={{ color: C.textLo, fontSize: 12.5, lineHeight: 1.45 }}>{r.v && /\{/.test(r.d) ? tri(r.d, r.v) : tr(r.d)}</div>
+          </div>
+        </div>
+      ))}
+      <div style={{ color: C.textLo, fontSize: 11.5, lineHeight: 1.5, padding: "4px 2px" }}>
+        {tr("Nadie te vigila: esto es tuyo. Las pruebas están para que no te engañes a ti mismo, que es la única trampa que importa.")}
+      </div>
+    </div>
+  );
+}
+
 /* Las áreas son tuyas: renómbralas, cámbiales el icono, quita las que no van
    contigo o añade las que te falten. La clave interna no se toca nunca, para
    que los hábitos ya creados sigan apuntando a su sitio. */
@@ -5292,7 +5663,7 @@ function AreasEditor({ areas, onSave }) {
     <div>
       <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
         {list.map((a, i) => (
-          <div key={a.k} style={{ ...settingRow, padding: 10, display: "block" }}>
+          <div key={a.k} style={{ ...filaDentro(false), padding: 10, display: "block" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <button onClick={() => setAbierta(abierta === i ? null : i)} style={{ ...iconBtn, width: 38, height: 38, fontSize: 18 }}>{a.e}</button>
               <input style={{ ...inputStyle, flex: 1, marginBottom: 0 }} value={a.n} onChange={(e) => set(i, { n: e.target.value })} />
@@ -5469,9 +5840,45 @@ function ChallengeForm({ onSave }) {
 
 function HabitsList({ habits, dispatch, onAdd, state, toast }) {
   if (!habits || habits.length === 0) return <EmptyState face="happy" title={tr("Crea tu racha")} sub={tr("Marca cada día que cumples un hábito y no rompas la cadena. Cuanto más larga, más cuesta soltarla.")} cta={tr("Nuevo hábito")} onCta={onAdd} />;
-  return <div className="bstagger" style={{ display: "grid", gap: 12 }}>{habits.map((h) => <HabitCard key={h.id} h={h} dispatch={dispatch} state={state} toast={toast} />)}</div>;
+  /* El banco: todos tus hábitos, agrupados por área. Arriba, los cinco que hoy
+     están en la mesa; puedes cambiarlos tocando la estrella. */
+  const hoy = todayISO();
+  const enMision = new Set(habitosDeHoy(state, hoy).map((h) => h.id));
+  const areas = rpgDe(state).areas || AREAS_DEFECTO;
+  const cambiarMision = (h) => {
+    const ids = [...enMision];
+    const nuevo = ids.includes(h.id) ? ids.filter((x) => x !== h.id) : (ids.length >= MISION_TAM ? ids : [...ids, h.id]);
+    if (!ids.includes(h.id) && ids.length >= MISION_TAM) { toast && toast(tr("Ya tienes cinco"), tr("Quita uno antes de meter otro. De eso va la misión.")); return; }
+    dispatch({ type: "rpg", payload: { mision: { d: hoy, ids: nuevo, cerrado: false } } });
+  };
+
+  const porArea = areas.map((a) => ({ a, hs: habits.filter((h) => (h.area || "salud") === a.k) })).filter((g) => g.hs.length);
+  const huerfanos = habits.filter((h) => !areas.some((a) => a.k === (h.area || "salud")));
+  if (huerfanos.length) porArea.push({ a: { k: "_otros", n: "Sin área", e: "•" }, hs: huerfanos });
+
+  return (
+    <div>
+      <div style={{ ...card, padding: "12px 14px", marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ fontSize: 18 }}>⭐</span>
+        <div style={{ flex: 1, minWidth: 0, color: C.textLo, fontSize: 12.5, lineHeight: 1.45 }}>
+          {tri("Toca la estrella para elegir los {n} de hoy. Los demás suman si los haces, pero no te castigan.", { n: MISION_TAM })}
+        </div>
+        <span style={{ color: C.yellow, fontWeight: 900, fontSize: 14 }}>{enMision.size}/{MISION_TAM}</span>
+      </div>
+      {porArea.map(({ a, hs }) => (
+        <div key={a.k} style={{ marginBottom: 18 }}>
+          <h3 style={{ ...sectionH, fontSize: 12, margin: "0 0 8px", display: "flex", alignItems: "center", gap: 7, opacity: 0.85 }}>
+            <span style={{ fontSize: 14 }}>{a.e}</span>{tr(a.n)}
+          </h3>
+          <div className="bstagger" style={{ display: "grid", gap: 12 }}>
+            {hs.map((h) => <HabitCard key={h.id} h={h} dispatch={dispatch} state={state} toast={toast} enMision={enMision.has(h.id)} onMision={() => cambiarMision(h)} />)}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
-function HabitCard({ h, dispatch, state, toast }) {
+function HabitCard({ h, dispatch, state, toast, enMision, onMision }) {
   const done = new Set(h.done || []);
   const streak = streakOf(done);
   const best = bestStreak(h.done || []);
@@ -5492,6 +5899,11 @@ function HabitCard({ h, dispatch, state, toast }) {
             {tri("+{x} XP {a} · +{c} monedas", { x: premio.xp, a: (AREAS_DEFECTO.find((z) => z.k === premio.area) || {}).e || "", c: premio.coins })}
           </div>
         </div>
+        {onMision && (
+          <button onClick={onMision} title={tr("Poner en la misión de hoy")} style={{ ...iconBtn, width: 30, height: 30, fontSize: 15, color: enMision ? C.yellow : C.textLo, background: enMision ? "rgba(255,212,0,.14)" : undefined, borderColor: enMision ? C.yellow : C.line }}>
+            {enMision ? "★" : "☆"}
+          </button>
+        )}
         <button onClick={() => dispatch({ type: "remove", col: "habits", id: h.id })} style={{ ...iconBtn, width: 30, height: 30, color: C.textLo }}><Trash2 size={14} /></button>
       </div>
       <div style={{ display: "flex", gap: 6, marginTop: 12, justifyContent: "space-between" }}>
@@ -5513,6 +5925,7 @@ function HabitForm({ onSave, areas }) {
   const [color, setColor] = useState(HABIT_COLORS[0]);
   const [area, setArea] = useState("salud");
   const [dif, setDif] = useState("normal");
+  const [prueba, setPrueba] = useState("ninguna");
   const lista = (areas && areas.length) ? areas : AREAS_DEFECTO;
   const p = premioDeHabito({ dif });
   return (
@@ -5529,8 +5942,14 @@ function HabitForm({ onSave, areas }) {
         </div>
         <div style={{ color: C.textLo, fontSize: 11.5, marginTop: 6 }}>{tri("Cada día que lo cumplas: +{x} XP, +{c} monedas y +{v} de vida.", { x: p.xp, c: p.coins, v: p.cura })}</div>
       </Field>
+      <Field label={tr("¿Qué prueba te pido?")}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {PRUEBAS.map((p) => <Chip key={p.k} active={prueba === p.k} onClick={() => setPrueba(p.k)}>{p.e} {tr(p.n)}</Chip>)}
+        </div>
+        <div style={{ color: C.textLo, fontSize: 11.5, marginTop: 6, lineHeight: 1.45 }}>{tr("Con prueba no te engañas a ti mismo. Sin ella también vale: es tu app.")}</div>
+      </Field>
       <Field label={tr("Color")}><div style={{ display: "flex", gap: 10 }}>{HABIT_COLORS.map((c) => <button key={c} onClick={() => setColor(c)} style={{ width: 36, height: 36, borderRadius: 999, background: c, border: color === c ? `3px solid ${C.textHi}` : "3px solid transparent", cursor: "pointer" }} />)}</div></Field>
-      <PrimaryBtn full onClick={() => name.trim() && onSave({ name: name.trim(), color, area, dif })}><Check size={18} strokeWidth={3} /> {tr("Crear hábito")}</PrimaryBtn>
+      <PrimaryBtn full onClick={() => name.trim() && onSave({ name: name.trim(), color, area, dif, prueba })}><Check size={18} strokeWidth={3} /> {tr("Crear hábito")}</PrimaryBtn>
     </div>
   );
 }
@@ -6116,23 +6535,30 @@ function ObjetosPanel({ state, dispatch, onIrAColecciones }) {
   );
 }
 
-function CollectionScreen({ state, dispatch }) {
-  const [tab, setTab] = useState("colecciones");
+/* Con `soloTab` esta pantalla se puede empotrar dentro de otra (Dinero) sin su
+   título ni sus pestañas: enseña un solo panel. Así Colecciones, Objetos,
+   Empresas y Fiados viven donde les toca — con el patrimonio — sin duplicar
+   ni una línea de código. */
+function CollectionScreen({ state, dispatch, soloTab }) {
+  const [tabInterna, setTab] = useState("colecciones");
+  const tab = soloTab || tabInterna;
   const [sheet, setSheet] = useState(null); // 'col' | 'item' | 'fiado'
   const [activeCol, setActiveCol] = useState(null);
   const [editFiado, setEditFiado] = useState(null);
 
   return (
-    <div style={{ padding: "20px 18px 0" }}>
-      <Title kicker={tr("Lo que tienes y prestas")}>{tr("Colecciones")}</Title>
+    <div style={{ padding: soloTab ? 0 : "20px 18px 0" }}>
+      {!soloTab && <Title kicker={tr("Lo que tienes y prestas")}>{tr("Colecciones")}</Title>}
+      {!soloTab && (
       <div style={{ display: "flex", gap: 8, marginBottom: 16, overflowX: "auto", paddingBottom: 4 }}>
         <Chip active={tab === "colecciones"} onClick={() => setTab("colecciones")}>{tr("Colecciones")}</Chip>
         <Chip active={tab === "objetos"} onClick={() => setTab("objetos")}>{tr("Objetos")}</Chip>
         <Chip active={tab === "empresas"} onClick={() => setTab("empresas")}>{tr("Empresas y artistas")}</Chip>
         <Chip active={tab === "fiados"} onClick={() => setTab("fiados")}>{tr("Fiados")}</Chip>
       </div>
+      )}
 
-      {tab === "objetos" && <ObjetosPanel state={state} dispatch={dispatch} onIrAColecciones={() => setTab("colecciones")} />}
+      {tab === "objetos" && <ObjetosPanel state={state} dispatch={dispatch} onIrAColecciones={soloTab ? null : () => setTab("colecciones")} />}
 
       {tab === "empresas" && <OrgsPanel state={state} dispatch={dispatch} />}
 
@@ -6211,7 +6637,7 @@ function CollectionScreen({ state, dispatch }) {
         )
       )}
 
-      <div style={{ height: 122 }} />
+      <div style={{ height: soloTab ? 12 : 122 }} />
       {tab !== "empresas" && tab !== "objetos" && !(tab === "colecciones" && activeCol) && (
         <FAB onClick={() => { setEditFiado(null); setSheet(tab === "fiados" ? "fiado" : "col"); }} label={tab === "fiados" ? tr("Fiado") : tr("Colección")} />
       )}
@@ -8113,12 +8539,14 @@ function SharePanel({ project }) {
    TAB BAR
    ============================================================ */
 function TabBar({ active, onChange, ai }) {
+  /* Cuatro, no cinco. Colección se mudó a Dinero › Patrimonio, que es donde
+     estaba su sitio: lo que tienes también es dinero. Menos botones abajo,
+     cada uno más grande y más fácil de acertar con el pulgar. */
   const tabs = [
     { key: "home", label: tr("Hoy"), icon: Home },
     { key: "agenda", label: tr("Agenda"), icon: CalendarDays },
     { key: "dinero", label: tr("Dinero"), icon: Wallet },
-    { key: "coleccion", label: tr("Colección"), icon: Package },
-    { key: "cerebro", label: tr("Cerebro"), icon: Brain },
+    { key: "cerebro", label: tr("Vida"), icon: Brain },
   ];
   return (
     <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, minHeight: 72, paddingBottom: "env(safe-area-inset-bottom)", background: C.glass, backdropFilter: "blur(20px) saturate(1.6)", WebkitBackdropFilter: "blur(20px) saturate(1.6)", borderTop: `1px solid ${C.edge}`, boxShadow: `0 1px 0 rgba(255,255,255,.04) inset, 0 -14px 34px ${C.dropSheet}`, display: "flex", zIndex: 40 }}>
@@ -8472,6 +8900,24 @@ export default function BrosinOS() {
     if (Object.keys(patch).length) dispatch({ type: "profile", payload: patch });
   }, [state.ready, state.habits, state.events]);
 
+  /* Cierre del día. Si ayer quedaron hábitos de la misión sin marcar, hoy se
+     paga. No hay temporizador: se ajusta cuentas la primera vez que abres la
+     app, que es justo cuando te enteras de lo que ha pasado. */
+  useEffect(() => {
+    if (!state.ready) return;
+    const c = cierreDelDia(state, todayISO());
+    if (!c) return;
+    const m = misionDe(state) || {};
+    if (c.coste > 0) {
+      dispatch({ type: "premio", payload: { hp: -c.coste } });
+      const r = rpgDe(state);
+      const quedan = Math.max(0, Number(r.hp || 0) - c.coste);
+      if (quedan === 0 && !r.muertoDesde) dispatch({ type: "rpg", payload: { muertoDesde: nowISO() } });
+      pushToast(tri("Ayer dejaste {n} sin hacer", { n: c.fallados.length }), tri("−{v} de vida. Hoy tienes cinco nuevos.", { v: c.coste }));
+    }
+    dispatch({ type: "rpg", payload: { mision: { ...m, cerrado: true } } });
+  }, [state.ready, state.rpg && state.rpg.mision && state.rpg.mision.d]);
+
   /* número en el icono de la app: pendientes de hoy (eventos + hábitos) */
   useEffect(() => {
     if (!state.ready) return;
@@ -8694,10 +9140,11 @@ export default function BrosinOS() {
             </div>
           ) : (
             <div key={tab} style={{ animation: "bpagein .3s cubic-bezier(.2,.9,.3,1)" }}>
-              {tab === "home" && <HomeScreen state={state} dispatch={dispatch} go={setTab} ai={ai} toast={pushToast} openMarkets={() => { setMoneyTab("mercados"); setTab("dinero"); }} />}
+              {tab === "home" && <HomeScreen state={state} dispatch={dispatch} go={(t, sub) => { if (sub) setMoneyTab(sub); setTab(t); }} ai={ai} toast={pushToast} openMarkets={() => { setMoneyTab("mercados"); setTab("dinero"); }} />}
               {tab === "agenda" && <AgendaScreen state={state} dispatch={dispatch} />}
               {tab === "dinero" && <MoneyScreen state={state} dispatch={dispatch} tab={moneyTab} setTab={setMoneyTab} toast={pushToast} ai={ai} />}
-              {tab === "coleccion" && <CollectionScreen state={state} dispatch={dispatch} />}
+              {/* la vieja pestaña Colección: si alguien llega aquí desde un atajo antiguo, lo mandamos a su nuevo sitio */}
+              {tab === "coleccion" && <MoneyScreen state={state} dispatch={dispatch} tab={"colecciones"} setTab={(t) => { setMoneyTab(t); setTab("dinero"); }} toast={pushToast} ai={ai} />}
               {tab === "cerebro" && <BrainScreen state={state} dispatch={dispatch} ai={ai} toast={pushToast} />}
               {tab === "camara" && <CameraScreen state={state} dispatch={dispatch} back={() => setTab("home")} toast={pushToast} />}
               {tab === "personas" && <PeopleScreen state={state} dispatch={dispatch} back={() => setTab("home")} />}
