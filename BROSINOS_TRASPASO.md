@@ -349,7 +349,8 @@ El fichero `test_v31.js` (78 comprobaciones, todas en verde) cubre: forma y requ
 | **v42** | **subida web** | **Cristal líquido (Liquid Glass) en toda la app: `glassSurface()` y fondo vivo detrás del marco. 711 claves, I18N_VER = 41** |
 | **v43** | **subida web** | **El juego de la vida: avatar de 1000 puntos, 9 áreas editables con XP y niveles, Brosin Coins, malos hábitos, tiendita y resurrección ganando 100 € de verdad. 773 claves, I18N_VER = 43** |
 | **v44** | **subida web** | **Cuatro pestañas en vez de cinco, Dinero en tres grupos, y los hábitos rehechos: banco por área, misión de cinco al día, pruebas y castigo por lo que dejas. 826 claves, I18N_VER = 44** |
-| **v45** | **subida web** | **El Juego con pestaña propia y radar de áreas, temporadas de 30/90 días, clan con clasificación por códigos, y "hoy" pasa a hora local. 885 claves, I18N_VER = 45** ← actual |
+| **v45** | **subida web** | **El Juego con pestaña propia y radar de áreas, temporadas de 30/90 días, clan con clasificación por códigos, y "hoy" pasa a hora local. 885 claves, I18N_VER = 45** |
+| **v46** | **subida web** | **Las fotos de prueba salen a IndexedDB, visor de pruebas, 12 logros que pagan monedas y celebración al subir de nivel. 924 claves, I18N_VER = 46** ← actual |
 
 ---
 
@@ -609,3 +610,60 @@ clan creado, carta propia generada, carta de un amigo pegada y clasificación
 ordenada bien (Javi Nv 3 por delante de Kevin Nv 1). Sin errores en consola.
 
 **Traducciones**: 59 claves nuevas × 25 idiomas, en la misma versión. 826 → 885.
+
+---
+
+## v46 — Quitar una bomba de relojería (05/08/2026)
+
+**Lo importante de esta versión no se ve.** En la v44 metí las pruebas con foto
+guardándolas dentro del estado, o sea en localStorage, junto a TODOS los datos
+del usuario. Ese cajón son unos 5 MB. A ~25 KB por foto y dos hábitos con foto
+al día, se llenaba en **mes y medio** — y al llenarse la app deja de guardar.
+Era un fallo mío con fecha de caducidad puesta.
+
+**El arreglo**: las fotos viven ahora en **IndexedDB** (`FOTO_DB`), que aguanta
+cientos de MB y va aparte. En el estado solo queda `imgId`. Añadidos:
+
+- `fotoGuardar/fotoLeer/fotoBorrar` y `fotosPodar(idsVivos)`, que borra las fotos
+  que ya no apunta ninguna prueba viva (si no, borrar una prueba dejaba la foto
+  huérfana ocupando sitio para siempre).
+- Migración automática al arrancar: las pruebas con `img` dentro del estado se
+  pasan a IndexedDB y se limpia el campo. Nadie pierde nada.
+- `VerPrueba` acepta las dos formas, por si la migración no llegó a correr.
+
+**Regla para el futuro**: en localStorage van datos, NUNCA binarios. Si algún día
+metes audio, adjuntos o lo que sea, mismo camino.
+
+**Y un agujero que tenía abierto desde la v44**: las pruebas se guardaban pero no
+se veían en ninguna pantalla, o sea que no servían para nada. Ahora en la misión,
+los hábitos cumplidos con prueba llevan un botón que la abre con su hora exacta.
+
+**Lo demás (pulido del juego)**
+
+- **12 logros** (`LOGROS`) que pagan Brosin Coins. Cada uno es una función `ok(state)`
+  que mira el estado: **nada de contadores que haya que mantener a mano**, así no se
+  pueden desincronizar. Pestaña Logros con anillo de progreso.
+- **Celebración al subir de nivel** con seis frases que rotan. El nivel ya visto se
+  guarda en `rpg.nivelVisto` (en el estado, no en una ref) para que no se celebre
+  dos veces al recargar.
+
+**AVISO GORDO PARA EL QUE VENGA DETRÁS**
+
+Durante esta versión `mcp__claude-in-chrome__file_upload` se rompió: rechaza las
+rutas largas de la carpeta de sesión (error de validación diciendo que `paths` es
+undefined). Con rutas cortas funciona. Si te pasa, **no pierdas el tiempo pidiendo
+reinicios**: el camino que funcionó fue
+
+1. `fetch` del `fuente/BrosinOS.jsx` publicado desde raw.githubusercontent,
+2. aplicar los cambios en el navegador con reemplazos de texto verificados uno a uno,
+3. compilar ahí mismo y publicar por DataTransfer (que no usa file_upload).
+
+Por eso **el repo es la fuente de verdad, no el disco local**: la v46 se construyó
+sobre lo publicado. Si editas en local, publica antes de seguir.
+
+**Probado**: marcar con prueba de texto y volver a abrirla desde la misión, subida a
+nivel 2 celebrada, 3 logros desbloqueados y 145 monedas pagadas. Sin errores.
+
+**Traducciones**: 39 claves nuevas × 25 idiomas. 885 → 924.
+
+**Pendiente**: el aviso de la misión del día a una hora elegida.
