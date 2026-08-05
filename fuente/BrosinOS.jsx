@@ -25,7 +25,7 @@ import {
    diccionario activo; si falta, devuelve el español (nunca se ve un hueco).
    Diccionarios: /i18n/{lang}.json — se descargan solo al elegir el idioma y
    quedan cacheados. El marco remonta con key={...lang} al cambiar. */
-const I18N_VER = "45"; // rompe la caché del SW al subir versión
+const I18N_VER = "46"; // rompe la caché del SW al subir versión
 const LANGS = [
   { k: "auto", label: "Automático" },
   { k: "es", label: "Español", flag: "🇪🇸", locale: "es-ES" },
@@ -329,6 +329,63 @@ const AREAS = [
   { key: "dinero", label: tr("Dinero"), icon: Wallet },
   { key: "cerebro", label: "Objetivos", icon: Target },
 ];
+
+/* ============================================================
+   ALMACEN DE FOTOS - IndexedDB, no localStorage
+   Las fotos de prueba iban al mismo cajon que TODOS tus datos, y ese cajon son
+   unos 5 MB. A 25 KB por foto y dos habitos con foto al dia, se llenaba en mes
+   y medio, y al llenarse la app deja de guardar. IndexedDB aguanta cientos de
+   MB y vive aparte, asi que una foto de mas nunca puede tirar tus finanzas.
+   Aqui solo van BINARIOS. El registro de la prueba se queda en el estado normal
+   con el id de la foto, para que siga sincronizando y haciendo copia.
+   ============================================================ */
+const FOTO_DB = "brosin_fotos", FOTO_STORE = "fotos";
+let _fotoDB = null;
+function abrirFotoDB() {
+  if (_fotoDB) return _fotoDB;
+  _fotoDB = new Promise((res, rej) => {
+    try {
+      if (!window.indexedDB) return rej(new Error("sin indexedDB"));
+      const req = indexedDB.open(FOTO_DB, 1);
+      req.onupgradeneeded = () => { const db = req.result; if (!db.objectStoreNames.contains(FOTO_STORE)) db.createObjectStore(FOTO_STORE); };
+      req.onsuccess = () => res(req.result);
+      req.onerror = () => rej(req.error);
+    } catch (e) { rej(e); }
+  });
+  return _fotoDB;
+}
+function _tx(modo) {
+  return abrirFotoDB().then((db) => db.transaction(FOTO_STORE, modo).objectStore(FOTO_STORE));
+}
+async function fotoGuardar(id, dataURL) {
+  const st = await _tx("readwrite");
+  return new Promise((res, rej) => { const r = st.put(dataURL, id); r.onsuccess = () => res(id); r.onerror = () => rej(r.error); });
+}
+async function fotoLeer(id) {
+  if (!id) return null;
+  try {
+    const st = await _tx("readonly");
+    return await new Promise((res) => { const r = st.get(id); r.onsuccess = () => res(r.result || null); r.onerror = () => res(null); });
+  } catch (e) { return null; }
+}
+async function fotoBorrar(id) {
+  if (!id) return;
+  try { const st = await _tx("readwrite"); st.delete(id); } catch (e) {}
+}
+/* Barrido: se queda solo con las fotos que alguna prueba viva sigue apuntando.
+   Sin esto, borrar una prueba dejaria la foto huerfana ocupando sitio para
+   siempre. */
+async function fotosPodar(idsVivos) {
+  try {
+    const st = await _tx("readwrite");
+    const vivos = new Set(idsVivos || []);
+    await new Promise((res) => {
+      const r = st.getAllKeys();
+      r.onsuccess = () => { (r.result || []).forEach((k) => { if (!vivos.has(k)) st.delete(k); }); res(); };
+      r.onerror = () => res();
+    });
+  } catch (e) {}
+}
 
 /* ---------- tiny utils ---------- */
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
@@ -1237,6 +1294,57 @@ function radiografia(state) {
   };
 }
 
+/* ============================================================
+   LOGROS - se desbloquean solos, pagan monedas
+   Cada uno es una funcion que mira el estado y dice si o no. Nada de contadores
+   que haya que ir actualizando a mano: si la condicion se cumple, esta hecho.
+   Asi no se pueden desincronizar, que es de donde salen los bugs raros.
+   ============================================================ */
+const LOGROS = [
+  { k: "primer", e: "🌱", n: "El primer paso", d: "Crear tu primer hábito", pago: 25,
+    ok: (s) => (s.habits || []).length >= 1 },
+  { k: "dia", e: "✅", n: "Misión cumplida", d: "Marcar los cinco de un día", pago: 50,
+    ok: (s) => { const hoy = todayISO(); const l = habitosDeHoy(s, hoy); return l.length >= 3 && l.every((h) => (h.done || []).includes(hoy)); } },
+  { k: "racha7", e: "🔥", n: "Una semana entera", d: "Siete días seguidos con un hábito", pago: 100,
+    ok: (s) => (s.habits || []).some((h) => streakOf(new Set(h.done || [])) >= 7) },
+  { k: "racha30", e: "🗿", n: "Ya es parte de ti", d: "Treinta días seguidos con un hábito", pago: 400,
+    ok: (s) => (s.habits || []).some((h) => streakOf(new Set(h.done || [])) >= 30) },
+  { k: "nivel5", e: "⭐", n: "Nivel 5", d: "Llegar al nivel cinco", pago: 150,
+    ok: (s) => nivelGlobal(s).nivel >= 5 },
+  { k: "nivel10", e: "🌟", n: "Nivel 10", d: "Llegar al nivel diez", pago: 400,
+    ok: (s) => nivelGlobal(s).nivel >= 10 },
+  { k: "equilibrio", e: "⚖️", n: "En equilibrio", d: "Tener nivel 2 o más en cinco áreas", pago: 250,
+    ok: (s) => radiografia(s).filas.filter((f) => f.nivel >= 2).length >= 5 },
+  { k: "prueba", e: "📷", n: "Sin trampas", d: "Dejar tu primera prueba", pago: 40,
+    ok: (s) => (s.pruebas || []).length >= 1 },
+  { k: "temporada", e: "🏆", n: "Hasta el final", d: "Cerrar una temporada entera", pago: 500,
+    ok: (s) => (s.temporadas || []).some((t) => t.cerrada) },
+  { k: "vuelta", e: "💶", n: "De vuelta", d: "Revivir ganando dinero de verdad", pago: 300,
+    ok: (s) => (rpgDe(s).vueltas || 0) >= 1 },
+  { k: "diario", e: "✍️", n: "Constancia", d: "Escribir el diario diez días", pago: 120,
+    ok: (s) => (s.diario || []).length >= 10 },
+  { k: "clan", e: "🛡️", n: "No vas solo", d: "Meter a alguien en tu clan", pago: 80,
+    ok: (s) => ((s.clanes || [])[0] || {}).miembros ? (s.clanes[0].miembros || []).length >= 1 : false },
+];
+
+/* Frases de subida de nivel. Que no diga siempre lo mismo: la decima vez que
+   subes, "has subido de nivel" ya no significa nada. */
+const FRASES_NIVEL = [
+  () => tr("Eso no lo hace cualquiera. Sigue."),
+  () => tr("Un escalón más. Y los de abajo ya no los pisas."),
+  () => tr("Esto ya no es suerte, es costumbre."),
+  () => tr("Mira el radar: se está poniendo bonito."),
+  () => tr("El que empezó esto no te reconocería."),
+  () => tr("Otro más. Y el siguiente cuesta un poco más, que es como tiene que ser."),
+];
+
+const logrosGanados = (state) => new Set(rpgDe(state).logros || []);
+/* Los que se acaban de cumplir y aun no estaban apuntados */
+function logrosNuevos(state) {
+  const ya = logrosGanados(state);
+  return LOGROS.filter((l) => !ya.has(l.k) && (() => { try { return l.ok(state); } catch (e) { return false; } })());
+}
+
 /* Estado del avatar ahora mismo: si está muerto, cuánto le falta para volver
    y cuánto plazo le queda. */
 function rpgEstado(state) {
@@ -1337,15 +1445,20 @@ function marcarHabito(state, dispatch, h, iso, toast, prueba) {
   if (estaba) set.delete(iso); else set.add(iso);
   dispatch({ type: "update", col: "habits", id: h.id, patch: { done: [...set] } });
 
-  // La prueba: se guarda al marcar y se retira al desmarcar. La foto va
-  // reducida a un pulgar pequeño — el almacén del móvil es limitado y esta app
-  // ya se quedó una vez sin sitio.
+  /* La prueba: se guarda al marcar y se retira al desmarcar. La FOTO no viaja
+     dentro del estado: se guarda aparte en IndexedDB y aqui solo queda su id.
+     Asi una foto no puede llenar el almacen donde viven tus finanzas. */
   if (!estaba && prueba && prueba.tipo && prueba.tipo !== "ninguna") {
-    dispatch({ type: "add", col: "pruebas", item: { id: uid(), habitId: h.id, date: iso, at: nowISO(), tipo: prueba.tipo, texto: prueba.texto || "", img: prueba.img || "" } });
+    const reg = { id: uid(), habitId: h.id, date: iso, at: nowISO(), tipo: prueba.tipo, texto: prueba.texto || "" };
+    if (prueba.img) {
+      reg.imgId = "f_" + reg.id;
+      fotoGuardar(reg.imgId, prueba.img).catch(() => {});
+    }
+    dispatch({ type: "add", col: "pruebas", item: reg });
   }
   if (estaba) {
     const vieja = (state.pruebas || []).find((p) => p.habitId === h.id && p.date === iso);
-    if (vieja) dispatch({ type: "remove", col: "pruebas", id: vieja.id });
+    if (vieja) { if (vieja.imgId) fotoBorrar(vieja.imgId); dispatch({ type: "remove", col: "pruebas", id: vieja.id }); }
   }
 
   const r = rpgDe(state);
@@ -3272,6 +3385,7 @@ function MisionDeHoy({ state, dispatch, toast, onVerBanco }) {
   const hoy = todayISO();
   const lista = habitosDeHoy(state, hoy);
   const [pidiendo, setPidiendo] = useState(null); // hábito esperando su prueba
+  const [viendo, setViendo] = useState(null);     // prueba que se está mirando
   const hechos = lista.filter((h) => (h.done || []).includes(hoy)).length;
   const pct = lista.length ? (hechos / lista.length) * 100 : 0;
   const areas = rpgDe(state).areas || AREAS_DEFECTO;
@@ -3317,20 +3431,22 @@ function MisionDeHoy({ state, dispatch, toast, onVerBanco }) {
         {lista.map((h) => {
           const hecho = (h.done || []).includes(hoy);
           const p = premioDeHabito(h);
+          const suPrueba = hecho ? (state.pruebas || []).find((x) => x.habitId === h.id && x.date === hoy) : null;
           return (
-            <button key={h.id} onClick={() => tocar(h)} style={{
-              ...filaDentro(hecho), padding: "10px 12px", display: "flex", alignItems: "center", gap: 10,
-              cursor: "pointer", textAlign: "left",
-            }}>
-              <span style={{
-                width: 22, height: 22, borderRadius: 7, flexShrink: 0, display: "grid", placeItems: "center",
-                background: hecho ? C.good : "transparent", border: `2px solid ${hecho ? C.good : C.line}`,
-              }}>{hecho && <Check size={13} color={C.ink} strokeWidth={4} />}</span>
-              <span style={{ fontSize: 15 }}>{emojiDe(h.area)}</span>
-              <span style={{ flex: 1, minWidth: 0, color: hecho ? C.textLo : C.textHi, fontWeight: 700, fontSize: 13.5, textDecoration: hecho ? "line-through" : "none" }}>{h.name}</span>
-              {h.prueba && h.prueba !== "ninguna" && <span style={{ fontSize: 12, opacity: 0.75 }}>{(PRUEBAS.find((x) => x.k === h.prueba) || {}).e}</span>}
+            <div key={h.id} style={{ ...filaDentro(hecho), padding: "10px 12px", display: "flex", alignItems: "center", gap: 10 }}>
+              <button onClick={() => tocar(h)} style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10, background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}>
+                <span style={{
+                  width: 22, height: 22, borderRadius: 7, flexShrink: 0, display: "grid", placeItems: "center",
+                  background: hecho ? C.good : "transparent", border: "2px solid " + (hecho ? C.good : C.line),
+                }}>{hecho && <Check size={13} color={C.ink} strokeWidth={4} />}</span>
+                <span style={{ fontSize: 15 }}>{emojiDe(h.area)}</span>
+                <span style={{ flex: 1, minWidth: 0, color: hecho ? C.textLo : C.textHi, fontWeight: 700, fontSize: 13.5, textDecoration: hecho ? "line-through" : "none" }}>{h.name}</span>
+              </button>
+              {suPrueba
+                ? <button onClick={() => setViendo({ prueba: suPrueba, nombre: h.name })} title={tr("Ver la prueba")} style={{ ...iconBtn, width: 28, height: 28, fontSize: 13, flexShrink: 0 }}>{(PRUEBAS.find((x) => x.k === suPrueba.tipo) || {}).e}</button>
+                : (h.prueba && h.prueba !== "ninguna" && <span style={{ fontSize: 12, opacity: 0.75 }}>{(PRUEBAS.find((x) => x.k === h.prueba) || {}).e}</span>)}
               <span style={{ color: hecho ? C.good : C.textLo, fontSize: 11, fontWeight: 800, flexShrink: 0 }}>+{p.xp}</span>
-            </button>
+            </div>
           );
         })}
       </div>
@@ -3340,6 +3456,9 @@ function MisionDeHoy({ state, dispatch, toast, onVerBanco }) {
       </div>
       <button onClick={onVerBanco} style={{ background: "none", border: "none", color: C.yellow, fontWeight: 800, fontSize: 12, cursor: "pointer", padding: "8px 0 0" }}>{tr("Cambiar los de hoy")}</button>
 
+      <Sheet open={!!viendo} onClose={() => setViendo(null)} title={tr("Tu prueba")}>
+        {viendo && <VerPrueba prueba={viendo.prueba} nombre={viendo.nombre} />}
+      </Sheet>
       <Sheet open={!!pidiendo} onClose={() => setPidiendo(null)} title={pidiendo ? pidiendo.name : ""}>
         {pidiendo && (
           <PruebaForm tipo={pidiendo.prueba} onSave={(pr) => { marcarHabito(state, dispatch, pidiendo, hoy, toast, pr); setPidiendo(null); }} />
@@ -3410,6 +3529,41 @@ function DiarioCard({ state, dispatch }) {
           ))}
         </div>
       </Sheet>
+    </div>
+  );
+}
+
+/* Ver una prueba guardada. La foto vive en IndexedDB, asi que hay que ir a
+   buscarla: por eso el estado de carga. Se acepta tambien img a pelo, que es
+   como se guardaban las pruebas antes de mover las fotos de sitio. */
+function VerPrueba({ prueba, nombre }) {
+  const [img, setImg] = useState(prueba && prueba.img ? prueba.img : null);
+  const [cargando, setCargando] = useState(!!(prueba && prueba.imgId && !prueba.img));
+  useEffect(() => {
+    let vivo = true;
+    if (prueba && prueba.imgId && !prueba.img) {
+      fotoLeer(prueba.imgId).then((d) => { if (vivo) { setImg(d); setCargando(false); } });
+    }
+    return () => { vivo = false; };
+  }, [prueba && prueba.imgId]);
+  if (!prueba) return null;
+  const cuando = (() => { const t = Date.parse(prueba.at || ""); return isNaN(t) ? "" : new Date(t).toLocaleString(LOCALE, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); })();
+  return (
+    <div>
+      <div style={{ color: C.textLo, fontSize: 12, marginBottom: 10 }}>{nombre} · {cuando}</div>
+      {prueba.tipo === "foto" && (
+        cargando ? <div style={{ ...filaDentro(false), padding: 30, textAlign: "center", color: C.textLo, fontSize: 13 }}>{tr("Buscando la foto…")}</div>
+        : img ? <img src={img} alt="" style={{ width: "100%", borderRadius: 14, display: "block" }} />
+        : <div style={{ ...filaDentro(false), padding: 20, textAlign: "center", color: C.textLo, fontSize: 12.5, lineHeight: 1.45 }}>{tr("La foto ya no está. Puede que la borraras al vaciar los datos del navegador.")}</div>
+      )}
+      {prueba.tipo === "texto" && (
+        <div style={{ ...filaDentro(false), padding: 14, color: C.textHi, fontSize: 13.5, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{prueba.texto}</div>
+      )}
+      {prueba.tipo === "numero" && (
+        <div style={{ ...filaDentro(false), padding: 18, textAlign: "center" }}>
+          <div style={{ color: C.yellow, fontWeight: 900, fontSize: 34 }}>{prueba.texto}</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -5540,7 +5694,7 @@ function AvatarPanel({ state, dispatch, toast, seccion }) {
   const patch = (p) => dispatch({ type: "rpg", payload: p });
 
   const revivir = () => {
-    patch({ hp: RPG_VIDA_MAX, muertoDesde: null, vidas: Math.max(0, (r.vidas || 0)) });
+    patch({ hp: RPG_VIDA_MAX, muertoDesde: null, vidas: Math.max(0, (r.vidas || 0)), vueltas: (r.vueltas || 0) + 1 });
     toast && toast(tr("¡Has vuelto! 🔥"), tri("Ganaste {n} y recuperas los {v} puntos de vida.", { n: money(r.ganado), v: RPG_VIDA_MAX }));
   };
 
@@ -5777,6 +5931,7 @@ function GameScreen({ state, dispatch, toast, ai }) {
         <Chip active={tab === "habitos"} onClick={() => setTab("habitos")}>{tr("Hábitos")}</Chip>
         <Chip active={tab === "tienda"} onClick={() => setTab("tienda")}>{tr("Tienda")}</Chip>
         <Chip active={tab === "temporada"} onClick={() => setTab("temporada")}>{tr("Temporada")}</Chip>
+        <Chip active={tab === "logros"} onClick={() => setTab("logros")}>{tr("Logros")}</Chip>
         <Chip active={tab === "clan"} onClick={() => setTab("clan")}>{tr("Clan")}</Chip>
         <Chip active={tab === "retos"} onClick={() => setTab("retos")}>{tr("Retos")}</Chip>
       </div>
@@ -5797,8 +5952,50 @@ function GameScreen({ state, dispatch, toast, ai }) {
       {tab === "mision" && <><MisionDeHoy state={state} dispatch={dispatch} toast={toast} onVerBanco={() => setTab("habitos")} /><div style={{ height: 100 }} /></>}
       {tab === "habitos" && <HabitsPanel state={state} dispatch={dispatch} toast={toast} />}
       {tab === "temporada" && <TemporadaPanel state={state} dispatch={dispatch} toast={toast} />}
+      {tab === "logros" && <LogrosPanel state={state} />}
       {tab === "clan" && <ClanPanel state={state} dispatch={dispatch} toast={toast} />}
       {tab === "retos" && <ChallengesPanelSuelto state={state} dispatch={dispatch} />}
+    </div>
+  );
+}
+
+function LogrosPanel({ state }) {
+  const ya = logrosGanados(state);
+  const hechos = LOGROS.filter((l) => ya.has(l.k));
+  const faltan = LOGROS.filter((l) => !ya.has(l.k));
+  const pagado = hechos.reduce((s, l) => s + l.pago, 0);
+  const pct = (hechos.length / LOGROS.length) * 100.5;
+  return (
+    <div>
+      <div style={{ ...card, padding: 16, marginBottom: 14, display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ color: C.textHi, fontWeight: 900, fontSize: 16 }}>{hechos.length}/{LOGROS.length}</div>
+          <div style={{ color: C.textLo, fontSize: 12 }}>{tri("Te han dado {c} monedas", { c: pagado })}</div>
+        </div>
+        <div style={{ width: 54, height: 54 }}>
+          <svg viewBox="0 0 40 40" style={{ width: "100%", height: "100%", transform: "rotate(-90deg)" }}>
+            <circle cx="20" cy="20" r="16" fill="none" stroke={C.rail} strokeWidth="5" />
+            <circle cx="20" cy="20" r="16" fill="none" stroke={C.yellow} strokeWidth="5" strokeLinecap="round" strokeDasharray={pct + " 100.5"} />
+          </svg>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gap: 8 }}>
+        {[...hechos, ...faltan].map((l) => {
+          const tengo = ya.has(l.k);
+          return (
+            <div key={l.k} style={{ ...filaDentro(tengo), padding: "12px 13px", display: "flex", alignItems: "center", gap: 12, opacity: tengo ? 1 : 0.62 }}>
+              <span style={{ fontSize: 21, filter: tengo ? "none" : "grayscale(1)" }}>{l.e}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ color: C.textHi, fontWeight: 800, fontSize: 13.5 }}>{tr(l.n)}</div>
+                <div style={{ color: C.textLo, fontSize: 12 }}>{tr(l.d)}</div>
+              </div>
+              <span style={{ color: tengo ? C.good : C.textLo, fontWeight: 800, fontSize: 12, flexShrink: 0 }}>{tengo ? "✓" : "+" + l.pago}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ height: 100 }} />
     </div>
   );
 }
@@ -9360,6 +9557,56 @@ export default function BrosinOS() {
     if (st.count > (p.streakBest || 0)) patch.streakBest = st.count;
     if (Object.keys(patch).length) dispatch({ type: "profile", payload: patch });
   }, [state.ready, state.habits, state.events]);
+
+  /* Logros y subidas de nivel. Va despues de cada cambio del juego: si algo se
+     acaba de cumplir, se paga y se celebra. El nivel anterior se guarda en el
+     propio estado (no en una ref) para que no se celebre dos veces si recargas. */
+  useEffect(() => {
+    if (!state.ready) return;
+    const r = rpgDe(state);
+    const nuevos = logrosNuevos(state);
+    if (nuevos.length) {
+      const pago = nuevos.reduce((s, l) => s + l.pago, 0);
+      dispatch({ type: "rpg", payload: { logros: [...(r.logros || []), ...nuevos.map((l) => l.k)] } });
+      if (pago) dispatch({ type: "premio", payload: { coins: pago } });
+      const l = nuevos[0];
+      pushToast(l.e + " " + tr(l.n), nuevos.length > 1
+        ? tri("y {n} logros más · +{c} monedas", { n: nuevos.length - 1, c: pago })
+        : tri("{d} · +{c} monedas", { d: tr(l.d), c: l.pago }));
+      return;
+    }
+    const nivel = nivelGlobal(state).nivel;
+    const antes = Number(r.nivelVisto || 0);
+    if (antes === 0) { dispatch({ type: "rpg", payload: { nivelVisto: nivel } }); return; }
+    if (nivel > antes) {
+      dispatch({ type: "rpg", payload: { nivelVisto: nivel } });
+      pushToast(tri("¡NIVEL {n}! 🎉", { n: nivel }), FRASES_NIVEL[nivel % FRASES_NIVEL.length]());
+    }
+  }, [state.ready, state.rpg, state.habits, state.pruebas, state.diario, state.temporadas, state.clanes]);
+
+  /* Mantenimiento del almacen de fotos, una vez al arrancar:
+     1) las fotos viejas que se guardaron dentro del estado (antes de mover el
+        almacen) se pasan a IndexedDB y se sacan del estado;
+     2) se borran las fotos que ya no apunta ninguna prueba viva. */
+  useEffect(() => {
+    if (!state.ready) return;
+    let vivo = true;
+    (async () => {
+      const pruebas = state.pruebas || [];
+      for (const p of pruebas) {
+        if (!vivo) return;
+        if (p.img && !p.imgId) {
+          const idFoto = "f_" + p.id;
+          try {
+            await fotoGuardar(idFoto, p.img);
+            dispatch({ type: "update", col: "pruebas", id: p.id, patch: { imgId: idFoto, img: "" } });
+          } catch (e) {}
+        }
+      }
+      if (vivo) fotosPodar(pruebas.map((p) => p.imgId).filter(Boolean));
+    })();
+    return () => { vivo = false; };
+  }, [state.ready]);
 
   /* Cierre del día. Si ayer quedaron hábitos de la misión sin marcar, hoy se
      paga. No hay temporizador: se ajusta cuentas la primera vez que abres la
