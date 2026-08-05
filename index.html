@@ -1,7 +1,7 @@
 <!DOCTYPE html><html lang="es"><head><meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
 <title>Brosin OS</title><meta name="description" content="Tu segundo cerebro. Bro, no te quedes sin." />
-<meta name="brosin-build" content="v45" /><meta name="theme-color" content="#0a0a0a" />
+<meta name="brosin-build" content="v46" /><meta name="theme-color" content="#0a0a0a" />
 <meta name="apple-mobile-web-app-capable" content="yes" /><meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" /><meta name="apple-mobile-web-app-title" content="Brosin" />
 <link rel="manifest" href="./manifest.webmanifest" /><link rel="apple-touch-icon" href="./apple-touch-icon.png" /><link rel="icon" type="image/png" href="./icon-192.png" />
@@ -34,7 +34,7 @@
 </script>
 </head><body><div id="root"><div id="splash">
   <img class="bl" src="./brosin_eye.png" alt="Brosin" />
-  <div class="s">Despertando la colmena… · v45</div><div class="l"></div>
+  <div class="s">Despertando la colmena… · v46</div><div class="l"></div>
 </div></div><script type="module">
 import { createRoot } from "react-dom/client";
 import React, { useReducer, useEffect, useState, useRef, useCallback } from "react";
@@ -50,7 +50,7 @@ import { Home, CalendarDays, Wallet, Brain, Plus, Check, X, Target, TrendingUp, 
    diccionario activo; si falta, devuelve el español (nunca se ve un hueco).
    Diccionarios: /i18n/{lang}.json — se descargan solo al elegir el idioma y
    quedan cacheados. El marco remonta con key={...lang} al cambiar. */
-const I18N_VER = "45"; // rompe la caché del SW al subir versión
+const I18N_VER = "46"; // rompe la caché del SW al subir versión
 const LANGS = [
     { k: "auto", label: "Automático" },
     { k: "es", label: "Español", flag: "🇪🇸", locale: "es-ES" },
@@ -376,6 +376,79 @@ const AREAS = [
     { key: "dinero", label: tr("Dinero"), icon: Wallet },
     { key: "cerebro", label: "Objetivos", icon: Target },
 ];
+/* ============================================================
+   ALMACEN DE FOTOS - IndexedDB, no localStorage
+   Las fotos de prueba iban al mismo cajon que TODOS tus datos, y ese cajon son
+   unos 5 MB. A 25 KB por foto y dos habitos con foto al dia, se llenaba en mes
+   y medio, y al llenarse la app deja de guardar. IndexedDB aguanta cientos de
+   MB y vive aparte, asi que una foto de mas nunca puede tirar tus finanzas.
+   Aqui solo van BINARIOS. El registro de la prueba se queda en el estado normal
+   con el id de la foto, para que siga sincronizando y haciendo copia.
+   ============================================================ */
+const FOTO_DB = "brosin_fotos", FOTO_STORE = "fotos";
+let _fotoDB = null;
+function abrirFotoDB() {
+    if (_fotoDB)
+        return _fotoDB;
+    _fotoDB = new Promise((res, rej) => {
+        try {
+            if (!window.indexedDB)
+                return rej(new Error("sin indexedDB"));
+            const req = indexedDB.open(FOTO_DB, 1);
+            req.onupgradeneeded = () => { const db = req.result; if (!db.objectStoreNames.contains(FOTO_STORE))
+                db.createObjectStore(FOTO_STORE); };
+            req.onsuccess = () => res(req.result);
+            req.onerror = () => rej(req.error);
+        }
+        catch (e) {
+            rej(e);
+        }
+    });
+    return _fotoDB;
+}
+function _tx(modo) {
+    return abrirFotoDB().then((db) => db.transaction(FOTO_STORE, modo).objectStore(FOTO_STORE));
+}
+async function fotoGuardar(id, dataURL) {
+    const st = await _tx("readwrite");
+    return new Promise((res, rej) => { const r = st.put(dataURL, id); r.onsuccess = () => res(id); r.onerror = () => rej(r.error); });
+}
+async function fotoLeer(id) {
+    if (!id)
+        return null;
+    try {
+        const st = await _tx("readonly");
+        return await new Promise((res) => { const r = st.get(id); r.onsuccess = () => res(r.result || null); r.onerror = () => res(null); });
+    }
+    catch (e) {
+        return null;
+    }
+}
+async function fotoBorrar(id) {
+    if (!id)
+        return;
+    try {
+        const st = await _tx("readwrite");
+        st.delete(id);
+    }
+    catch (e) { }
+}
+/* Barrido: se queda solo con las fotos que alguna prueba viva sigue apuntando.
+   Sin esto, borrar una prueba dejaria la foto huerfana ocupando sitio para
+   siempre. */
+async function fotosPodar(idsVivos) {
+    try {
+        const st = await _tx("readwrite");
+        const vivos = new Set(idsVivos || []);
+        await new Promise((res) => {
+            const r = st.getAllKeys();
+            r.onsuccess = () => { (r.result || []).forEach((k) => { if (!vivos.has(k))
+                st.delete(k); }); res(); };
+            r.onerror = () => res();
+        });
+    }
+    catch (e) { }
+}
 /* ---------- tiny utils ---------- */
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 /* "Hoy" es TU hoy, no el de Greenwich. Con toISOString() en España, entre las
@@ -1462,6 +1535,59 @@ function radiografia(state) {
         media: conValor.reduce((s, f) => s + f.nivel, 0) / (conValor.length || 1),
     };
 }
+/* ============================================================
+   LOGROS - se desbloquean solos, pagan monedas
+   Cada uno es una funcion que mira el estado y dice si o no. Nada de contadores
+   que haya que ir actualizando a mano: si la condicion se cumple, esta hecho.
+   Asi no se pueden desincronizar, que es de donde salen los bugs raros.
+   ============================================================ */
+const LOGROS = [
+    { k: "primer", e: "🌱", n: "El primer paso", d: "Crear tu primer hábito", pago: 25,
+        ok: (s) => (s.habits || []).length >= 1 },
+    { k: "dia", e: "✅", n: "Misión cumplida", d: "Marcar los cinco de un día", pago: 50,
+        ok: (s) => { const hoy = todayISO(); const l = habitosDeHoy(s, hoy); return l.length >= 3 && l.every((h) => (h.done || []).includes(hoy)); } },
+    { k: "racha7", e: "🔥", n: "Una semana entera", d: "Siete días seguidos con un hábito", pago: 100,
+        ok: (s) => (s.habits || []).some((h) => streakOf(new Set(h.done || [])) >= 7) },
+    { k: "racha30", e: "🗿", n: "Ya es parte de ti", d: "Treinta días seguidos con un hábito", pago: 400,
+        ok: (s) => (s.habits || []).some((h) => streakOf(new Set(h.done || [])) >= 30) },
+    { k: "nivel5", e: "⭐", n: "Nivel 5", d: "Llegar al nivel cinco", pago: 150,
+        ok: (s) => nivelGlobal(s).nivel >= 5 },
+    { k: "nivel10", e: "🌟", n: "Nivel 10", d: "Llegar al nivel diez", pago: 400,
+        ok: (s) => nivelGlobal(s).nivel >= 10 },
+    { k: "equilibrio", e: "⚖️", n: "En equilibrio", d: "Tener nivel 2 o más en cinco áreas", pago: 250,
+        ok: (s) => radiografia(s).filas.filter((f) => f.nivel >= 2).length >= 5 },
+    { k: "prueba", e: "📷", n: "Sin trampas", d: "Dejar tu primera prueba", pago: 40,
+        ok: (s) => (s.pruebas || []).length >= 1 },
+    { k: "temporada", e: "🏆", n: "Hasta el final", d: "Cerrar una temporada entera", pago: 500,
+        ok: (s) => (s.temporadas || []).some((t) => t.cerrada) },
+    { k: "vuelta", e: "💶", n: "De vuelta", d: "Revivir ganando dinero de verdad", pago: 300,
+        ok: (s) => (rpgDe(s).vueltas || 0) >= 1 },
+    { k: "diario", e: "✍️", n: "Constancia", d: "Escribir el diario diez días", pago: 120,
+        ok: (s) => (s.diario || []).length >= 10 },
+    { k: "clan", e: "🛡️", n: "No vas solo", d: "Meter a alguien en tu clan", pago: 80,
+        ok: (s) => ((s.clanes || [])[0] || {}).miembros ? (s.clanes[0].miembros || []).length >= 1 : false },
+];
+/* Frases de subida de nivel. Que no diga siempre lo mismo: la decima vez que
+   subes, "has subido de nivel" ya no significa nada. */
+const FRASES_NIVEL = [
+    () => tr("Eso no lo hace cualquiera. Sigue."),
+    () => tr("Un escalón más. Y los de abajo ya no los pisas."),
+    () => tr("Esto ya no es suerte, es costumbre."),
+    () => tr("Mira el radar: se está poniendo bonito."),
+    () => tr("El que empezó esto no te reconocería."),
+    () => tr("Otro más. Y el siguiente cuesta un poco más, que es como tiene que ser."),
+];
+const logrosGanados = (state) => new Set(rpgDe(state).logros || []);
+/* Los que se acaban de cumplir y aun no estaban apuntados */
+function logrosNuevos(state) {
+    const ya = logrosGanados(state);
+    return LOGROS.filter((l) => !ya.has(l.k) && (() => { try {
+        return l.ok(state);
+    }
+    catch (e) {
+        return false;
+    } })());
+}
 /* Estado del avatar ahora mismo: si está muerto, cuánto le falta para volver
    y cuánto plazo le queda. */
 function rpgEstado(state) {
@@ -1564,16 +1690,24 @@ function marcarHabito(state, dispatch, h, iso, toast, prueba) {
     else
         set.add(iso);
     dispatch({ type: "update", col: "habits", id: h.id, patch: { done: [...set] } });
-    // La prueba: se guarda al marcar y se retira al desmarcar. La foto va
-    // reducida a un pulgar pequeño — el almacén del móvil es limitado y esta app
-    // ya se quedó una vez sin sitio.
+    /* La prueba: se guarda al marcar y se retira al desmarcar. La FOTO no viaja
+       dentro del estado: se guarda aparte en IndexedDB y aqui solo queda su id.
+       Asi una foto no puede llenar el almacen donde viven tus finanzas. */
     if (!estaba && prueba && prueba.tipo && prueba.tipo !== "ninguna") {
-        dispatch({ type: "add", col: "pruebas", item: { id: uid(), habitId: h.id, date: iso, at: nowISO(), tipo: prueba.tipo, texto: prueba.texto || "", img: prueba.img || "" } });
+        const reg = { id: uid(), habitId: h.id, date: iso, at: nowISO(), tipo: prueba.tipo, texto: prueba.texto || "" };
+        if (prueba.img) {
+            reg.imgId = "f_" + reg.id;
+            fotoGuardar(reg.imgId, prueba.img).catch(() => { });
+        }
+        dispatch({ type: "add", col: "pruebas", item: reg });
     }
     if (estaba) {
         const vieja = (state.pruebas || []).find((p) => p.habitId === h.id && p.date === iso);
-        if (vieja)
+        if (vieja) {
+            if (vieja.imgId)
+                fotoBorrar(vieja.imgId);
             dispatch({ type: "remove", col: "pruebas", id: vieja.id });
+        }
     }
     const r = rpgDe(state);
     if (r.muertoDesde)
@@ -3241,6 +3375,7 @@ function MisionDeHoy({ state, dispatch, toast, onVerBanco }) {
     const hoy = todayISO();
     const lista = habitosDeHoy(state, hoy);
     const [pidiendo, setPidiendo] = useState(null); // hábito esperando su prueba
+    const [viendo, setViendo] = useState(null); // prueba que se está mirando
     const hechos = lista.filter((h) => (h.done || []).includes(hoy)).length;
     const pct = lista.length ? (hechos / lista.length) * 100 : 0;
     const areas = rpgDe(state).areas || AREAS_DEFECTO;
@@ -3278,23 +3413,25 @@ function MisionDeHoy({ state, dispatch, toast, onVerBanco }) {
         React.createElement("div", { style: { display: "grid", gap: 7 } }, lista.map((h) => {
             const hecho = (h.done || []).includes(hoy);
             const p = premioDeHabito(h);
-            return (React.createElement("button", { key: h.id, onClick: () => tocar(h), style: {
-                    ...filaDentro(hecho), padding: "10px 12px", display: "flex", alignItems: "center", gap: 10,
-                    cursor: "pointer", textAlign: "left",
-                } },
-                React.createElement("span", { style: {
-                        width: 22, height: 22, borderRadius: 7, flexShrink: 0, display: "grid", placeItems: "center",
-                        background: hecho ? C.good : "transparent", border: `2px solid ${hecho ? C.good : C.line}`,
-                    } }, hecho && React.createElement(Check, { size: 13, color: C.ink, strokeWidth: 4 })),
-                React.createElement("span", { style: { fontSize: 15 } }, emojiDe(h.area)),
-                React.createElement("span", { style: { flex: 1, minWidth: 0, color: hecho ? C.textLo : C.textHi, fontWeight: 700, fontSize: 13.5, textDecoration: hecho ? "line-through" : "none" } }, h.name),
-                h.prueba && h.prueba !== "ninguna" && React.createElement("span", { style: { fontSize: 12, opacity: 0.75 } }, (PRUEBAS.find((x) => x.k === h.prueba) || {}).e),
+            const suPrueba = hecho ? (state.pruebas || []).find((x) => x.habitId === h.id && x.date === hoy) : null;
+            return (React.createElement("div", { key: h.id, style: { ...filaDentro(hecho), padding: "10px 12px", display: "flex", alignItems: "center", gap: 10 } },
+                React.createElement("button", { onClick: () => tocar(h), style: { flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10, background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left" } },
+                    React.createElement("span", { style: {
+                            width: 22, height: 22, borderRadius: 7, flexShrink: 0, display: "grid", placeItems: "center",
+                            background: hecho ? C.good : "transparent", border: "2px solid " + (hecho ? C.good : C.line),
+                        } }, hecho && React.createElement(Check, { size: 13, color: C.ink, strokeWidth: 4 })),
+                    React.createElement("span", { style: { fontSize: 15 } }, emojiDe(h.area)),
+                    React.createElement("span", { style: { flex: 1, minWidth: 0, color: hecho ? C.textLo : C.textHi, fontWeight: 700, fontSize: 13.5, textDecoration: hecho ? "line-through" : "none" } }, h.name)),
+                suPrueba
+                    ? React.createElement("button", { onClick: () => setViendo({ prueba: suPrueba, nombre: h.name }), title: tr("Ver la prueba"), style: { ...iconBtn, width: 28, height: 28, fontSize: 13, flexShrink: 0 } }, (PRUEBAS.find((x) => x.k === suPrueba.tipo) || {}).e)
+                    : (h.prueba && h.prueba !== "ninguna" && React.createElement("span", { style: { fontSize: 12, opacity: 0.75 } }, (PRUEBAS.find((x) => x.k === h.prueba) || {}).e)),
                 React.createElement("span", { style: { color: hecho ? C.good : C.textLo, fontSize: 11, fontWeight: 800, flexShrink: 0 } },
                     "+",
                     p.xp)));
         })),
         React.createElement("div", { style: { color: C.textLo, fontSize: 11, marginTop: 10, lineHeight: 1.45 } }, tri("Lo que dejes sin marcar te costará {n} de vida al acabar el día.", { n: CASTIGO_POR_FALLO })),
         React.createElement("button", { onClick: onVerBanco, style: { background: "none", border: "none", color: C.yellow, fontWeight: 800, fontSize: 12, cursor: "pointer", padding: "8px 0 0" } }, tr("Cambiar los de hoy")),
+        React.createElement(Sheet, { open: !!viendo, onClose: () => setViendo(null), title: tr("Tu prueba") }, viendo && React.createElement(VerPrueba, { prueba: viendo.prueba, nombre: viendo.nombre })),
         React.createElement(Sheet, { open: !!pidiendo, onClose: () => setPidiendo(null), title: pidiendo ? pidiendo.name : "" }, pidiendo && (React.createElement(PruebaForm, { tipo: pidiendo.prueba, onSave: (pr) => { marcarHabito(state, dispatch, pidiendo, hoy, toast, pr); setPidiendo(null); } })))));
 }
 /* ============================================================
@@ -3338,6 +3475,37 @@ function DiarioCard({ state, dispatch }) {
                             React.createElement(Trash2, { size: 13 })))),
                 editando === d.id ? (React.createElement("textarea", { defaultValue: d.texto, onBlur: (e) => { const v = e.target.value.trim(); if (v && v !== d.texto)
                         dispatch({ type: "update", col: "diario", id: d.id, patch: { texto: v } }); setEditando(null); }, style: { ...inputStyle, minHeight: 80, resize: "vertical", marginBottom: 0 }, autoFocus: true })) : (React.createElement("div", { style: { color: C.textHi, fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" } }, d.texto)))))))));
+}
+/* Ver una prueba guardada. La foto vive en IndexedDB, asi que hay que ir a
+   buscarla: por eso el estado de carga. Se acepta tambien img a pelo, que es
+   como se guardaban las pruebas antes de mover las fotos de sitio. */
+function VerPrueba({ prueba, nombre }) {
+    const [img, setImg] = useState(prueba && prueba.img ? prueba.img : null);
+    const [cargando, setCargando] = useState(!!(prueba && prueba.imgId && !prueba.img));
+    useEffect(() => {
+        let vivo = true;
+        if (prueba && prueba.imgId && !prueba.img) {
+            fotoLeer(prueba.imgId).then((d) => { if (vivo) {
+                setImg(d);
+                setCargando(false);
+            } });
+        }
+        return () => { vivo = false; };
+    }, [prueba && prueba.imgId]);
+    if (!prueba)
+        return null;
+    const cuando = (() => { const t = Date.parse(prueba.at || ""); return isNaN(t) ? "" : new Date(t).toLocaleString(LOCALE, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); })();
+    return (React.createElement("div", null,
+        React.createElement("div", { style: { color: C.textLo, fontSize: 12, marginBottom: 10 } },
+            nombre,
+            " \u00B7 ",
+            cuando),
+        prueba.tipo === "foto" && (cargando ? React.createElement("div", { style: { ...filaDentro(false), padding: 30, textAlign: "center", color: C.textLo, fontSize: 13 } }, tr("Buscando la foto…"))
+            : img ? React.createElement("img", { src: img, alt: "", style: { width: "100%", borderRadius: 14, display: "block" } })
+                : React.createElement("div", { style: { ...filaDentro(false), padding: 20, textAlign: "center", color: C.textLo, fontSize: 12.5, lineHeight: 1.45 } }, tr("La foto ya no está. Puede que la borraras al vaciar los datos del navegador."))),
+        prueba.tipo === "texto" && (React.createElement("div", { style: { ...filaDentro(false), padding: 14, color: C.textHi, fontSize: 13.5, lineHeight: 1.55, whiteSpace: "pre-wrap" } }, prueba.texto)),
+        prueba.tipo === "numero" && (React.createElement("div", { style: { ...filaDentro(false), padding: 18, textAlign: "center" } },
+            React.createElement("div", { style: { color: C.yellow, fontWeight: 900, fontSize: 34 } }, prueba.texto)))));
 }
 /* La prueba. La foto se reduce a 260 px antes de guardarse: sin esto, cinco
    fotos al día llenan el almacén del navegador en una semana y la app deja de
@@ -5191,7 +5359,7 @@ function AvatarPanel({ state, dispatch, toast, seccion }) {
     const colVida = pctVida > 50 ? C.good : pctVida > 20 ? C.yellow : C.bad;
     const patch = (p) => dispatch({ type: "rpg", payload: p });
     const revivir = () => {
-        patch({ hp: RPG_VIDA_MAX, muertoDesde: null, vidas: Math.max(0, (r.vidas || 0)) });
+        patch({ hp: RPG_VIDA_MAX, muertoDesde: null, vidas: Math.max(0, (r.vidas || 0)), vueltas: (r.vueltas || 0) + 1 });
         toast && toast(tr("¡Has vuelto! 🔥"), tri("Ganaste {n} y recuperas los {v} puntos de vida.", { n: money(r.ganado), v: RPG_VIDA_MAX }));
     };
     // Apuntar que has caído en un mal hábito: quita vida
@@ -5339,6 +5507,7 @@ function GameScreen({ state, dispatch, toast, ai }) {
             React.createElement(Chip, { active: tab === "habitos", onClick: () => setTab("habitos") }, tr("Hábitos")),
             React.createElement(Chip, { active: tab === "tienda", onClick: () => setTab("tienda") }, tr("Tienda")),
             React.createElement(Chip, { active: tab === "temporada", onClick: () => setTab("temporada") }, tr("Temporada")),
+            React.createElement(Chip, { active: tab === "logros", onClick: () => setTab("logros") }, tr("Logros")),
             React.createElement(Chip, { active: tab === "clan", onClick: () => setTab("clan") }, tr("Clan")),
             React.createElement(Chip, { active: tab === "retos", onClick: () => setTab("retos") }, tr("Retos"))),
         temp && tab !== "temporada" && (React.createElement("button", { onClick: () => setTab("temporada"), style: { ...filaDentro(false), width: "100%", padding: "9px 12px", marginBottom: 14, display: "flex", alignItems: "center", gap: 9, cursor: "pointer", textAlign: "left" } },
@@ -5352,8 +5521,38 @@ function GameScreen({ state, dispatch, toast, ai }) {
             React.createElement("div", { style: { height: 100 } })),
         tab === "habitos" && React.createElement(HabitsPanel, { state: state, dispatch: dispatch, toast: toast }),
         tab === "temporada" && React.createElement(TemporadaPanel, { state: state, dispatch: dispatch, toast: toast }),
+        tab === "logros" && React.createElement(LogrosPanel, { state: state }),
         tab === "clan" && React.createElement(ClanPanel, { state: state, dispatch: dispatch, toast: toast }),
         tab === "retos" && React.createElement(ChallengesPanelSuelto, { state: state, dispatch: dispatch })));
+}
+function LogrosPanel({ state }) {
+    const ya = logrosGanados(state);
+    const hechos = LOGROS.filter((l) => ya.has(l.k));
+    const faltan = LOGROS.filter((l) => !ya.has(l.k));
+    const pagado = hechos.reduce((s, l) => s + l.pago, 0);
+    const pct = (hechos.length / LOGROS.length) * 100.5;
+    return (React.createElement("div", null,
+        React.createElement("div", { style: { ...card, padding: 16, marginBottom: 14, display: "flex", alignItems: "center", gap: 12 } },
+            React.createElement("div", { style: { flex: 1 } },
+                React.createElement("div", { style: { color: C.textHi, fontWeight: 900, fontSize: 16 } },
+                    hechos.length,
+                    "/",
+                    LOGROS.length),
+                React.createElement("div", { style: { color: C.textLo, fontSize: 12 } }, tri("Te han dado {c} monedas", { c: pagado }))),
+            React.createElement("div", { style: { width: 54, height: 54 } },
+                React.createElement("svg", { viewBox: "0 0 40 40", style: { width: "100%", height: "100%", transform: "rotate(-90deg)" } },
+                    React.createElement("circle", { cx: "20", cy: "20", r: "16", fill: "none", stroke: C.rail, strokeWidth: "5" }),
+                    React.createElement("circle", { cx: "20", cy: "20", r: "16", fill: "none", stroke: C.yellow, strokeWidth: "5", strokeLinecap: "round", strokeDasharray: pct + " 100.5" })))),
+        React.createElement("div", { style: { display: "grid", gap: 8 } }, [...hechos, ...faltan].map((l) => {
+            const tengo = ya.has(l.k);
+            return (React.createElement("div", { key: l.k, style: { ...filaDentro(tengo), padding: "12px 13px", display: "flex", alignItems: "center", gap: 12, opacity: tengo ? 1 : 0.62 } },
+                React.createElement("span", { style: { fontSize: 21, filter: tengo ? "none" : "grayscale(1)" } }, l.e),
+                React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                    React.createElement("div", { style: { color: C.textHi, fontWeight: 800, fontSize: 13.5 } }, tr(l.n)),
+                    React.createElement("div", { style: { color: C.textLo, fontSize: 12 } }, tr(l.d))),
+                React.createElement("span", { style: { color: tengo ? C.good : C.textLo, fontWeight: 800, fontSize: 12, flexShrink: 0 } }, tengo ? "✓" : "+" + l.pago)));
+        })),
+        React.createElement("div", { style: { height: 100 } })));
 }
 /* El banco de hábitos con su propio botón de crear (antes vivía en Cerebro) */
 function HabitsPanel({ state, dispatch, toast }) {
@@ -8568,6 +8767,63 @@ function BrosinOS() {
         if (Object.keys(patch).length)
             dispatch({ type: "profile", payload: patch });
     }, [state.ready, state.habits, state.events]);
+    /* Logros y subidas de nivel. Va despues de cada cambio del juego: si algo se
+       acaba de cumplir, se paga y se celebra. El nivel anterior se guarda en el
+       propio estado (no en una ref) para que no se celebre dos veces si recargas. */
+    useEffect(() => {
+        if (!state.ready)
+            return;
+        const r = rpgDe(state);
+        const nuevos = logrosNuevos(state);
+        if (nuevos.length) {
+            const pago = nuevos.reduce((s, l) => s + l.pago, 0);
+            dispatch({ type: "rpg", payload: { logros: [...(r.logros || []), ...nuevos.map((l) => l.k)] } });
+            if (pago)
+                dispatch({ type: "premio", payload: { coins: pago } });
+            const l = nuevos[0];
+            pushToast(l.e + " " + tr(l.n), nuevos.length > 1
+                ? tri("y {n} logros más · +{c} monedas", { n: nuevos.length - 1, c: pago })
+                : tri("{d} · +{c} monedas", { d: tr(l.d), c: l.pago }));
+            return;
+        }
+        const nivel = nivelGlobal(state).nivel;
+        const antes = Number(r.nivelVisto || 0);
+        if (antes === 0) {
+            dispatch({ type: "rpg", payload: { nivelVisto: nivel } });
+            return;
+        }
+        if (nivel > antes) {
+            dispatch({ type: "rpg", payload: { nivelVisto: nivel } });
+            pushToast(tri("¡NIVEL {n}! 🎉", { n: nivel }), FRASES_NIVEL[nivel % FRASES_NIVEL.length]());
+        }
+    }, [state.ready, state.rpg, state.habits, state.pruebas, state.diario, state.temporadas, state.clanes]);
+    /* Mantenimiento del almacen de fotos, una vez al arrancar:
+       1) las fotos viejas que se guardaron dentro del estado (antes de mover el
+          almacen) se pasan a IndexedDB y se sacan del estado;
+       2) se borran las fotos que ya no apunta ninguna prueba viva. */
+    useEffect(() => {
+        if (!state.ready)
+            return;
+        let vivo = true;
+        (async () => {
+            const pruebas = state.pruebas || [];
+            for (const p of pruebas) {
+                if (!vivo)
+                    return;
+                if (p.img && !p.imgId) {
+                    const idFoto = "f_" + p.id;
+                    try {
+                        await fotoGuardar(idFoto, p.img);
+                        dispatch({ type: "update", col: "pruebas", id: p.id, patch: { imgId: idFoto, img: "" } });
+                    }
+                    catch (e) { }
+                }
+            }
+            if (vivo)
+                fotosPodar(pruebas.map((p) => p.imgId).filter(Boolean));
+        })();
+        return () => { vivo = false; };
+    }, [state.ready]);
     /* Cierre del día. Si ayer quedaron hábitos de la misión sin marcar, hoy se
        paga. No hay temporizador: se ajusta cuentas la primera vez que abres la
        app, que es justo cuando te enteras de lo que ha pasado. */
