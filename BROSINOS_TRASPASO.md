@@ -350,7 +350,8 @@ El fichero `test_v31.js` (78 comprobaciones, todas en verde) cubre: forma y requ
 | **v43** | **subida web** | **El juego de la vida: avatar de 1000 puntos, 9 áreas editables con XP y niveles, Brosin Coins, malos hábitos, tiendita y resurrección ganando 100 € de verdad. 773 claves, I18N_VER = 43** |
 | **v44** | **subida web** | **Cuatro pestañas en vez de cinco, Dinero en tres grupos, y los hábitos rehechos: banco por área, misión de cinco al día, pruebas y castigo por lo que dejas. 826 claves, I18N_VER = 44** |
 | **v45** | **subida web** | **El Juego con pestaña propia y radar de áreas, temporadas de 30/90 días, clan con clasificación por códigos, y "hoy" pasa a hora local. 885 claves, I18N_VER = 45** |
-| **v46** | **subida web** | **Las fotos de prueba salen a IndexedDB, visor de pruebas, 12 logros que pagan monedas y celebración al subir de nivel. 924 claves, I18N_VER = 46** ← actual |
+| **v46** | **subida web** | **Las fotos de prueba salen a IndexedDB, visor de pruebas, 12 logros que pagan monedas y celebración al subir de nivel. 924 claves, I18N_VER = 46** |
+| **v47** | **subida web** | **Historial del juego con el motivo de cada movimiento, análisis por día de la semana y respuesta al tacto en toda la app. 947 claves, I18N_VER = 47** ← actual |
 
 ---
 
@@ -667,3 +668,51 @@ nivel 2 celebrada, 3 logros desbloqueados y 145 monedas pagadas. Sin errores.
 **Traducciones**: 39 claves nuevas × 25 idiomas. 885 → 924.
 
 **Pendiente**: el aviso de la misión del día a una hora elegida.
+
+---
+
+## v47 — Que el juego cuente lo que pasó (10/08/2026)
+
+Kevin: *"deberia quedar registro de cuando compre un capricho o cuando perdi
+puntos de vida y por q… asi se que dias flojeo mas y cuales soy mas productivo"*.
+
+**El registro (`state.registro`)**
+
+Lo importante es DÓNDE se escribe: **solo en el reducer, en `case "premio"`**.
+Cualquier via que gane o pierda vida o monedas pasa por ahi y queda apuntada
+sola. Es la unica forma de que el historial no mienta — si lo escribiera cada
+pantalla por su cuenta, el dia que alguien anada una via nueva se le olvidaria.
+
+Por eso en esta version se reencaminaron por `premio` cosas que iban por libre:
+
+- **La tienda**: `comprar()` ya no hace `patch({coins})`, dispara `premio` con
+  monedas en negativo y su nota.
+- **Los malos habitos**: `caer()` igual, con la vida en negativo.
+- **Revivir**: la vida se devuelve por `premio` para que quede el rastro.
+
+Cada entrada lleva `{tipo, texto, hp, coins, xp, area, at, dia}`. Techo de 500
+entradas: el historial informa, no es un archivo eterno.
+
+**El analisis por dia de la semana (`porDiaSemana`)**
+
+Sale del registro real. Nota de cada dia = (buenos − malos) / dias con datos.
+El detalle que importa: **un dia sin datos no puntua**. Sin eso, el domingo que
+aun no ha llegado saldria como "el peor dia" y seria mentira.
+
+Se pinta con barras verdes/rojas, el mejor y el peor resaltados con glow.
+
+**Pulido (`CSS_TACTO`)**
+
+Todo lo pulsable se hunde a 0.968 al tocarlo. Se anima `transform`, que va en la
+GPU; **nunca el desenfoque** (regla del cristal, ver v44). Respeta
+`prefers-reduced-motion`. Y las pestanas del Juego entran con `.bentra`.
+Es un detalle tonto que es justo lo que separa una app de una web.
+
+**Cuidado al probar**: si siembras datos falsos para ver el grafico, ojo con los
+timestamps. Yo sume 9 h a una fecha de las 21:26 y se me fueron todos al dia
+siguiente: el grafico salia desplazado y parecia un bug del codigo cuando el
+error estaba en la prueba.
+
+**Traducciones**: 23 claves nuevas × 25 idiomas. 924 → 947.
+
+**Pendiente**: el aviso de la mision del dia a una hora elegida.
