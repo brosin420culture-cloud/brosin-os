@@ -25,7 +25,7 @@ import {
    diccionario activo; si falta, devuelve el español (nunca se ve un hueco).
    Diccionarios: /i18n/{lang}.json — se descargan solo al elegir el idioma y
    quedan cacheados. El marco remonta con key={...lang} al cambiar. */
-const I18N_VER = "46"; // rompe la caché del SW al subir versión
+const I18N_VER = "47"; // rompe la caché del SW al subir versión
 const LANGS = [
   { k: "auto", label: "Automático" },
   { k: "es", label: "Español", flag: "🇪🇸", locale: "es-ES" },
@@ -387,6 +387,24 @@ async function fotosPodar(idsVivos) {
   } catch (e) {}
 }
 
+/* Respuesta al tacto. Una app se siente viva cuando el dedo nota que ha
+   pulsado ANTES de que pase nada. Se anima transform, que va en la GPU y no
+   obliga a repintar; nunca el desenfoque (regla del cristal). */
+const CSS_TACTO = `
+  button, [role="button"] { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+  button:not(:disabled):active, [role="button"]:active {
+    transform: scale(.968);
+    transition: transform .09s cubic-bezier(.2,.9,.3,1);
+  }
+  button, [role="button"] { transition: transform .22s cubic-bezier(.34,1.56,.64,1); }
+  button:disabled { opacity: .55; }
+  @media (prefers-reduced-motion: reduce) {
+    button:not(:disabled):active, [role="button"]:active { transform: none; }
+  }
+  /* la pantalla que entra: sube un pelin y aparece, como en iOS */
+  @keyframes bentra { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: none } }
+  .bentra { animation: bentra .32s cubic-bezier(.2,.9,.3,1) both; }
+`;
 /* ---------- tiny utils ---------- */
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 /* "Hoy" es TU hoy, no el de Greenwich. Con toISOString() en España, entre las
@@ -1205,7 +1223,8 @@ const EMPTY = {
   pruebas: [],     // evidencias de hábitos cumplidos (foto pequeña, texto o número)
   diario: [],      // la nota del día, una por fecha
   temporadas: [],  // bloques de 30 o 90 días con su resultado guardado
-  clanes: [],      // clasificación con amigos, por códigos: sin servidor
+  clanes: [],
+  registro: [], // cada movimiento del juego con su motivo: que paso, cuando y por que      // clasificación con amigos, por códigos: sin servidor
   // Marcas de borrado: { coleccion: { id: fechaISO } }. Sin esto, al fusionar
   // dos dispositivos lo borrado en uno "revive" desde el otro.
   _tomb: {},
@@ -1474,6 +1493,7 @@ function marcarHabito(state, dispatch, h, iso, toast, prueba) {
   dispatch({ type: "premio", payload: {
     area: p.area, xp: signo * p.xp, coins: signo * p.coins, hp: dHp,
     banco: { d: iso, k: h.id, quitar: estaba },
+    nota: { tipo: estaba ? "desmarca" : "habito", texto: h.name },
   } });
   if (!estaba && toast) toast(tri("+{c} monedas", { c: p.coins }), tri("+{x} XP · {a}", { x: p.xp, a: (nombreDeArea(state, p.area) || p.area) }));
 }
@@ -1620,9 +1640,20 @@ function reducer(state, a) {
         if (d.banco.quitar) delete mismo[d.banco.k]; else mismo[d.banco.k] = hpNuevo - hpAntes;
         curas = { d: d.banco.d, h: mismo };
       }
-      return { ...state, rpg: { ...r0, xp: xp2, curas,
-        coins: Math.max(0, Number(r0.coins || 0) + Number(d.coins || 0)),
-        hp: hpNuevo } };
+      /* El registro se escribe AQUI y solo aqui. Si algun dia se anade otra via
+         para ganar o perder vida, que pase por "premio" y quedara apuntada sola:
+         es la unica forma de que el historial no mienta. */
+      const coinsAntes = Number(r0.coins || 0);
+      const coinsNuevo = Math.max(0, coinsAntes + Number(d.coins || 0));
+      let registro = state.registro || [];
+      if (d.nota) {
+        registro = [...registro, {
+          id: uid(), at: nowISO(), dia: todayISO(),
+          tipo: d.nota.tipo, texto: d.nota.texto || "", area: d.area || null,
+          hp: hpNuevo - hpAntes, coins: coinsNuevo - coinsAntes, xp: Number(d.xp || 0),
+        }].slice(-500); // techo: el historial informa, no es un archivo eterno
+      }
+      return { ...state, rpg: { ...r0, xp: xp2, curas, coins: coinsNuevo, hp: hpNuevo }, registro };
     }
     default:
       return state;
@@ -5694,7 +5725,8 @@ function AvatarPanel({ state, dispatch, toast, seccion }) {
   const patch = (p) => dispatch({ type: "rpg", payload: p });
 
   const revivir = () => {
-    patch({ hp: RPG_VIDA_MAX, muertoDesde: null, vidas: Math.max(0, (r.vidas || 0)), vueltas: (r.vueltas || 0) + 1 });
+    patch({ muertoDesde: null, vidas: Math.max(0, (r.vidas || 0)), vueltas: (r.vueltas || 0) + 1 });
+    dispatch({ type: "premio", payload: { hp: RPG_VIDA_MAX, nota: { tipo: "revivir", texto: money(r.ganado) } } });
     toast && toast(tr("¡Has vuelto! 🔥"), tri("Ganaste {n} y recuperas los {v} puntos de vida.", { n: money(r.ganado), v: RPG_VIDA_MAX }));
   };
 
@@ -5702,20 +5734,22 @@ function AvatarPanel({ state, dispatch, toast, seccion }) {
   const caer = (m) => {
     const nuevoHp = Math.max(0, (r.hp || 0) - Number(m.coste || 0));
     if (nuevoHp === 0 && (r.vidas || 0) > 0) {
+      dispatch({ type: "premio", payload: { hp: -Number(m.coste || 0), nota: { tipo: "malo", texto: m.nombre } } });
       patch({ hp: RPG_VIDA_MAX, vidas: r.vidas - 1 });
       toast && toast(tr("Vida extra consumida"), tri("Te quedaban {n}. Sigues en pie.", { n: r.vidas - 1 }));
     } else if (nuevoHp === 0) {
-      patch({ hp: 0, muertoDesde: nowISO() });
+      dispatch({ type: "premio", payload: { hp: -Number(m.coste || 0), nota: { tipo: "malo", texto: m.nombre } } });
+      patch({ muertoDesde: nowISO() });
       toast && toast(tr("Tu avatar ha caído"), tri("Para volver: gana {n} en {h} horas y apúntalo.", { n: money(RPG_META_REVIVIR), h: RPG_HORAS_REVIVIR }));
     } else {
-      patch({ hp: nuevoHp });
+      dispatch({ type: "premio", payload: { hp: -Number(m.coste || 0), nota: { tipo: "malo", texto: m.nombre } } });
     }
   };
 
   // Comprar en la tienda: pagas con monedas y NO pierdes vida. Ese es el trato.
   const comprar = (art) => {
     if ((r.coins || 0) < Number(art.precio || 0)) { toast && toast(tr("Te faltan monedas"), tri("Necesitas {n} y tienes {t}.", { n: art.precio, t: r.coins || 0 })); return; }
-    patch({ coins: (r.coins || 0) - Number(art.precio || 0) });
+    dispatch({ type: "premio", payload: { coins: -Number(art.precio || 0), nota: { tipo: "compra", texto: art.nombre } } });
     toast && toast(tr("Disfrútalo, te lo has ganado"), tri("{a} · te quedan {n} monedas", { a: art.nombre, n: (r.coins || 0) - Number(art.precio || 0) }));
   };
 
@@ -5932,6 +5966,7 @@ function GameScreen({ state, dispatch, toast, ai }) {
         <Chip active={tab === "tienda"} onClick={() => setTab("tienda")}>{tr("Tienda")}</Chip>
         <Chip active={tab === "temporada"} onClick={() => setTab("temporada")}>{tr("Temporada")}</Chip>
         <Chip active={tab === "logros"} onClick={() => setTab("logros")}>{tr("Logros")}</Chip>
+        <Chip active={tab === "historial"} onClick={() => setTab("historial")}>{tr("Historial")}</Chip>
         <Chip active={tab === "clan"} onClick={() => setTab("clan")}>{tr("Clan")}</Chip>
         <Chip active={tab === "retos"} onClick={() => setTab("retos")}>{tr("Retos")}</Chip>
       </div>
@@ -5947,17 +5982,164 @@ function GameScreen({ state, dispatch, toast, ai }) {
         </button>
       )}
 
+      <div key={tab} className="bentra">
       {tab === "avatar" && <AvatarPanel state={state} dispatch={dispatch} toast={toast} seccion="avatar" />}
       {tab === "tienda" && <AvatarPanel state={state} dispatch={dispatch} toast={toast} seccion="tienda" />}
       {tab === "mision" && <><MisionDeHoy state={state} dispatch={dispatch} toast={toast} onVerBanco={() => setTab("habitos")} /><div style={{ height: 100 }} /></>}
       {tab === "habitos" && <HabitsPanel state={state} dispatch={dispatch} toast={toast} />}
       {tab === "temporada" && <TemporadaPanel state={state} dispatch={dispatch} toast={toast} />}
       {tab === "logros" && <LogrosPanel state={state} />}
+      {tab === "historial" && <HistorialPanel state={state} />}
       {tab === "clan" && <ClanPanel state={state} dispatch={dispatch} toast={toast} />}
       {tab === "retos" && <ChallengesPanelSuelto state={state} dispatch={dispatch} />}
+      </div>
     </div>
   );
 }
+
+/* ============================================================
+   EL HISTORIAL - que paso, cuando y por que
+   Sin esto el juego es un numero que sube y baja sin explicacion. Con esto
+   puedes mirar atras y ver por que perdiste vida el martes.
+   ============================================================ */
+const TIPOS_REG = {
+  habito:   { e: "✅", n: "Hábito cumplido", col: () => C.good },
+  desmarca: { e: "↩️", n: "Desmarcado",      col: () => C.textLo },
+  malo:     { e: "💀", n: "Caíste",          col: () => C.bad },
+  fallo:    { e: "😴", n: "Sin hacer",       col: () => C.bad },
+  compra:   { e: "🛒", n: "Capricho",        col: () => C.yellow },
+  logro:    { e: "🏅", n: "Logro",           col: () => C.yellow },
+  revivir:  { e: "💶", n: "De vuelta",       col: () => C.good },
+};
+const DIAS_CORTOS = ["L", "M", "X", "J", "V", "S", "D"];
+
+/* Que dias rindes y que dias flojeas. Sale del historial real, no de una
+   encuesta: cuenta lo bueno y lo malo de cada dia de la semana. Un dia sin
+   datos no cuenta, que si no el domingo que aun no ha llegado sale como el peor. */
+function porDiaSemana(state) {
+  const filas = DIAS_CORTOS.map((d) => ({ d, bien: 0, mal: 0, dias: new Set() }));
+  (state.registro || []).forEach((r) => {
+    const t = Date.parse(r.at || "");
+    if (isNaN(t)) return;
+    const i = (new Date(t).getDay() + 6) % 7; // lunes primero
+    const f = filas[i];
+    f.dias.add(r.dia || "");
+    if (r.tipo === "habito") f.bien++;
+    else if (r.tipo === "malo" || r.tipo === "fallo") f.mal++;
+  });
+  const conDatos = filas.filter((f) => f.dias.size > 0);
+  const media = (f) => f.dias.size ? (f.bien - f.mal) / f.dias.size : 0;
+  const puntuadas = filas.map((f) => ({ ...f, nota: media(f), tieneDatos: f.dias.size > 0 }));
+  const validas = puntuadas.filter((f) => f.tieneDatos);
+  const orden = [...validas].sort((a, b) => b.nota - a.nota);
+  return {
+    filas: puntuadas,
+    mejor: orden.length > 1 ? orden[0] : null,
+    peor: orden.length > 1 ? orden[orden.length - 1] : null,
+    hayDatos: validas.length >= 2,
+  };
+}
+
+function HistorialPanel({ state }) {
+  const [filtro, setFiltro] = useState("todo");
+  const semana = porDiaSemana(state);
+  const todo = [...(state.registro || [])].reverse();
+  const lista = filtro === "todo" ? todo
+    : filtro === "malo" ? todo.filter((r) => r.tipo === "malo" || r.tipo === "fallo")
+    : todo.filter((r) => r.tipo === filtro);
+
+  // agrupar por dia, que es como uno mira el pasado
+  const porDia = [];
+  lista.forEach((r) => {
+    const d = r.dia || (r.at || "").slice(0, 10);
+    const ultimo = porDia[porDia.length - 1];
+    if (ultimo && ultimo.dia === d) ultimo.items.push(r); else porDia.push({ dia: d, items: [r] });
+  });
+
+  const tope = Math.max(1, ...semana.filas.map((f) => Math.abs(f.nota)));
+
+  return (
+    <div>
+      {semana.hayDatos && (
+        <div style={{ ...card, padding: "16px 14px 14px", marginBottom: 14 }}>
+          <div style={{ color: C.textHi, fontWeight: 900, fontSize: 14, marginBottom: 2 }}>{tr("Tu semana")}</div>
+          <div style={{ color: C.textLo, fontSize: 11.5, marginBottom: 14 }}>{tr("Qué días rindes y qué días se te tuercen.")}</div>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 90 }}>
+            {semana.filas.map((f, i) => {
+              const alto = f.tieneDatos ? Math.max(6, (Math.abs(f.nota) / tope) * 62) : 6;
+              const bueno = f.nota >= 0;
+              const esMejor = semana.mejor && semana.mejor.d === f.d && f.tieneDatos;
+              const esPeor = semana.peor && semana.peor.d === f.d && f.tieneDatos;
+              return (
+                <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", gap: 6, height: "100%" }}>
+                  <div style={{
+                    width: "100%", height: alto, borderRadius: 8,
+                    background: !f.tieneDatos ? C.line : bueno ? C.good : C.bad,
+                    opacity: !f.tieneDatos ? 0.4 : (esMejor || esPeor) ? 1 : 0.6,
+                    boxShadow: esMejor ? "0 0 14px rgba(61,220,132,.45)" : esPeor ? "0 0 14px rgba(255,92,92,.4)" : "none",
+                    transition: "height .45s cubic-bezier(.2,.9,.3,1)",
+                  }} />
+                  <span style={{ fontSize: 10.5, fontWeight: esMejor || esPeor ? 900 : 700, color: esMejor ? C.good : esPeor ? C.bad : C.textLo }}>{f.d}</span>
+                </div>
+              );
+            })}
+          </div>
+          {semana.mejor && semana.peor && semana.mejor.d !== semana.peor.d && (
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              <div style={{ ...filaDentro(false), flex: 1, padding: "9px 11px" }}>
+                <div style={{ color: C.good, fontSize: 10, fontWeight: 800, letterSpacing: 0.5 }}>{tr("TU MEJOR DÍA")}</div>
+                <div style={{ color: C.textHi, fontWeight: 800, fontSize: 13 }}>{tr(NOMBRE_DIA[semana.mejor.d])}</div>
+              </div>
+              <div style={{ ...filaDentro(false), flex: 1, padding: "9px 11px" }}>
+                <div style={{ color: C.bad, fontSize: 10, fontWeight: 800, letterSpacing: 0.5 }}>{tr("SE TE ATRAGANTA")}</div>
+                <div style={{ color: C.textHi, fontWeight: 800, fontSize: 13 }}>{tr(NOMBRE_DIA[semana.peor.d])}</div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 7, marginBottom: 14, overflowX: "auto", paddingBottom: 4 }}>
+        <Chip active={filtro === "todo"} onClick={() => setFiltro("todo")}>{tr("Todo")}</Chip>
+        <Chip active={filtro === "habito"} onClick={() => setFiltro("habito")}>{tr("Cumplido")}</Chip>
+        <Chip active={filtro === "malo"} onClick={() => setFiltro("malo")}>{tr("Vida perdida")}</Chip>
+        <Chip active={filtro === "compra"} onClick={() => setFiltro("compra")}>{tr("Caprichos")}</Chip>
+        <Chip active={filtro === "logro"} onClick={() => setFiltro("logro")}>{tr("Logros")}</Chip>
+      </div>
+
+      {lista.length === 0 ? (
+        <div style={{ ...card, padding: 20, textAlign: "center", color: C.textLo, fontSize: 13, lineHeight: 1.5 }}>
+          {tr("Aquí irá quedando todo: lo que cumples, lo que te quita vida y en qué te gastas las monedas.")}
+        </div>
+      ) : porDia.map((g) => (
+        <div key={g.dia} style={{ marginBottom: 16 }}>
+          <div style={{ color: C.textLo, fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 7 }}>{fmtDate(g.dia)}</div>
+          <div style={{ display: "grid", gap: 7 }}>
+            {g.items.map((r) => {
+              const t = TIPOS_REG[r.tipo] || { e: "•", n: r.tipo, col: () => C.textLo };
+              const hora = (() => { const x = Date.parse(r.at || ""); return isNaN(x) ? "" : new Date(x).toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" }); })();
+              return (
+                <div key={r.id} style={{ ...filaDentro(false), padding: "10px 12px", display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 16 }}>{t.e}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ color: C.textHi, fontWeight: 700, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.texto || tr(t.n)}</div>
+                    <div style={{ color: C.textLo, fontSize: 11 }}>{tr(t.n)} · {hora}</div>
+                  </div>
+                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                    {!!r.hp && <div style={{ color: r.hp > 0 ? C.good : C.bad, fontWeight: 800, fontSize: 12.5 }}>{r.hp > 0 ? "+" : ""}{r.hp} ❤</div>}
+                    {!!r.coins && <div style={{ color: r.coins > 0 ? C.yellow : C.textLo, fontWeight: 800, fontSize: 11.5 }}>{r.coins > 0 ? "+" : ""}{r.coins} 🪙</div>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+      <div style={{ height: 100 }} />
+    </div>
+  );
+}
+const NOMBRE_DIA = { L: "Lunes", M: "Martes", X: "Miércoles", J: "Jueves", V: "Viernes", S: "Sábado", D: "Domingo" };
 
 function LogrosPanel({ state }) {
   const ya = logrosGanados(state);
@@ -9568,7 +9750,7 @@ export default function BrosinOS() {
     if (nuevos.length) {
       const pago = nuevos.reduce((s, l) => s + l.pago, 0);
       dispatch({ type: "rpg", payload: { logros: [...(r.logros || []), ...nuevos.map((l) => l.k)] } });
-      if (pago) dispatch({ type: "premio", payload: { coins: pago } });
+      if (pago) dispatch({ type: "premio", payload: { coins: pago, nota: { tipo: "logro", texto: nuevos.map((l) => tr(l.n)).join(", ") } } });
       const l = nuevos[0];
       pushToast(l.e + " " + tr(l.n), nuevos.length > 1
         ? tri("y {n} logros más · +{c} monedas", { n: nuevos.length - 1, c: pago })
@@ -9617,7 +9799,7 @@ export default function BrosinOS() {
     if (!c) return;
     const m = misionDe(state) || {};
     if (c.coste > 0) {
-      dispatch({ type: "premio", payload: { hp: -c.coste } });
+      dispatch({ type: "premio", payload: { hp: -c.coste, nota: { tipo: "fallo", texto: c.fallados.map((h) => h.name).join(", ") } } });
       const r = rpgDe(state);
       const quedan = Math.max(0, Number(r.hp || 0) - c.coste);
       if (quedan === 0 && !r.muertoDesde) dispatch({ type: "rpg", payload: { muertoDesde: nowISO() } });
@@ -9662,7 +9844,7 @@ export default function BrosinOS() {
   applyTheme(THEMES[_thK] ? _thK : "dark");
 
   const styleTag = (
-    <style>{`
+    <style>{CSS_TACTO + `
       @keyframes bshimmer {0%{background-position:200% 0}100%{background-position:-200% 0}}
       @keyframes bfloat {0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
       @keyframes bfade {from{opacity:0}to{opacity:1}}
