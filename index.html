@@ -1,7 +1,7 @@
 <!DOCTYPE html><html lang="es"><head><meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
 <title>Brosin OS</title><meta name="description" content="Tu segundo cerebro. Bro, no te quedes sin." />
-<meta name="brosin-build" content="v47" /><meta name="theme-color" content="#0a0a0a" />
+<meta name="brosin-build" content="v48" /><meta name="theme-color" content="#0a0a0a" />
 <meta name="apple-mobile-web-app-capable" content="yes" /><meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" /><meta name="apple-mobile-web-app-title" content="Brosin" />
 <link rel="manifest" href="./manifest.webmanifest" /><link rel="apple-touch-icon" href="./apple-touch-icon.png" /><link rel="icon" type="image/png" href="./icon-192.png" />
@@ -34,7 +34,7 @@
 </script>
 </head><body><div id="root"><div id="splash">
   <img class="bl" src="./brosin_eye.png" alt="Brosin" />
-  <div class="s">Despertando la colmena… · v47</div><div class="l"></div>
+  <div class="s">Despertando la colmena… · v48</div><div class="l"></div>
 </div></div><script type="module">
 import { createRoot } from "react-dom/client";
 import React, { useReducer, useEffect, useState, useRef, useCallback } from "react";
@@ -50,7 +50,7 @@ import { Home, CalendarDays, Wallet, Brain, Plus, Check, X, Target, TrendingUp, 
    diccionario activo; si falta, devuelve el español (nunca se ve un hueco).
    Diccionarios: /i18n/{lang}.json — se descargan solo al elegir el idioma y
    quedan cacheados. El marco remonta con key={...lang} al cambiar. */
-const I18N_VER = "47"; // rompe la caché del SW al subir versión
+const I18N_VER = "48"; // rompe la caché del SW al subir versión
 const LANGS = [
     { k: "auto", label: "Automático" },
     { k: "es", label: "Español", flag: "🇪🇸", locale: "es-ES" },
@@ -1466,7 +1466,9 @@ const EMPTY = {
     diario: [], // la nota del día, una por fecha
     temporadas: [], // bloques de 30 o 90 días con su resultado guardado
     clanes: [],
-    registro: [], // cada movimiento del juego con su motivo: que paso, cuando y por que      // clasificación con amigos, por códigos: sin servidor
+    registro: [],
+    proyectos: [], // negocios: la impresora 3D, etc. Sus gastos y ventas son movimientos etiquetados
+    productos: [], // catalogo de cada proyecto: precio de venta y coste unitario // cada movimiento del juego con su motivo: que paso, cuando y por que      // clasificación con amigos, por códigos: sin servidor
     // Marcas de borrado: { coleccion: { id: fechaISO } }. Sin esto, al fusionar
     // dos dispositivos lo borrado en uno "revive" desde el otro.
     _tomb: {},
@@ -4069,6 +4071,79 @@ function FixedForm({ initial, onSave }) {
 /* Los tres grupos de Dinero. Colecciones, Objetos, Empresas y Fiados se mudan
    aquí desde su propia pestaña: son patrimonio y cosas prestadas, o sea, dinero.
    Una pestaña menos abajo y todo lo que vale algo en el mismo sitio. */
+/* ============================================================
+   PROYECTOS - saber cuando un negocio deja de costarte y empieza a pagarte
+
+   REGLA DE ORO: un gasto o una venta de un proyecto NO es una copia de un
+   movimiento, ES un movimiento (`state.tx`) con el campo `proj`. Solo hay una
+   copia del dinero. Por eso:
+     - el balance nunca se infla ni se cuenta dos veces,
+     - si borras el movimiento desaparece del proyecto,
+     - si le cambias el importe cambia en los dos sitios.
+   Si algun dia te tienta guardar los gastos dentro del proyecto: no lo hagas.
+   Ese fue el fallo de las inversiones en la v36.
+   ============================================================ */
+const GASTO_TIPOS = [
+    { k: "inversion", n: "Inversión", d: "Se paga una vez: la máquina, las herramientas." },
+    { k: "recurrente", n: "Gasto que se repite", d: "Material, luz, una cuota. Sube el objetivo cada vez." },
+];
+/* Movimientos de un proyecto, opcionalmente desde una fecha */
+const movsDeProyecto = (state, projId, desdeISO) => (state.tx || []).filter((x) => x.proj === projId && (!desdeISO || String(x.date || "") >= desdeISO));
+/* Las cuentas de un proyecto. Todo sale de los movimientos: no hay un segundo
+   sitio donde puedan descuadrarse. */
+function cuentasProyecto(state, projId, desdeISO) {
+    const movs = movsDeProyecto(state, projId, desdeISO);
+    let inversion = 0, recurrente = 0, ingresado = 0, unidades = 0;
+    movs.forEach((x) => {
+        const n = Number(x.amount || 0);
+        if (x.type === "ingreso") {
+            ingresado += n;
+            unidades += Number(x.unidades || 0);
+        }
+        else if (x.gastoTipo === "recurrente")
+            recurrente += n;
+        else
+            inversion += n;
+    });
+    const gastos = inversion + recurrente;
+    const beneficio = ingresado - gastos; // lo que de verdad has ganado
+    const falta = Math.max(0, gastos - ingresado); // lo que queda para cubrir
+    return {
+        movs, inversion, recurrente, gastos, ingresado, unidades, beneficio, falta,
+        cubierto: gastos > 0 && ingresado >= gastos,
+        pct: gastos > 0 ? Math.min(100, (ingresado / gastos) * 100) : (ingresado > 0 ? 100 : 0),
+        ventaMedia: unidades > 0 ? ingresado / unidades : 0,
+    };
+}
+/* Cuantas unidades faltan de un producto para cubrir lo que queda.
+   Se usa el MARGEN (precio - coste), no el precio: el material de esas unidades
+   futuras lo vas a pagar tambien, y si no lo descontaras te saldria un numero
+   optimista que es justo lo que no quieres de una app de dinero. */
+const margenDe = (p) => Math.max(0, Number(p.precio || 0) - Number(p.coste || 0));
+function faltanUnidades(cuentas, producto) {
+    const m = margenDe(producto);
+    if (!m || cuentas.falta <= 0)
+        return 0;
+    return Math.ceil(cuentas.falta / m);
+}
+/* Periodos para "cuanto gano al mes". Lunes como primer dia de la semana. */
+function desdeDe(periodo) {
+    const d = new Date(), p = (n) => String(n).padStart(2, "0");
+    if (periodo === "semana") {
+        const dia = (d.getDay() + 6) % 7;
+        d.setDate(d.getDate() - dia);
+    }
+    else if (periodo === "mes")
+        d.setDate(1);
+    else
+        return null;
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+}
+const PERIODOS_PROY = [
+    { k: "semana", n: "Esta semana" },
+    { k: "mes", n: "Este mes" },
+    { k: "todo", n: "Desde el principio" },
+];
 const GRUPOS_DINERO = [
     { k: "dia", n: "Día a día", e: "💳", subs: [
             { k: "movimientos", n: "Movimientos" }, { k: "fijos", n: "Fijos" },
@@ -4082,6 +4157,9 @@ const GRUPOS_DINERO = [
     { k: "otros", n: "Con otros", e: "🤝", subs: [
             { k: "compartida", n: "Compartida" }, { k: "grupos", n: "Grupos" },
             { k: "fiados", n: "Fiados" }
+        ] },
+    { k: "negocios", n: "Proyectos", e: "🛠️", subs: [
+            { k: "proyectos", n: "Mis proyectos" }
         ] },
 ];
 const grupoDe = (hoja) => (GRUPOS_DINERO.find((g) => g.subs.some((s) => s.k === hoja)) || GRUPOS_DINERO[0]).k;
@@ -4157,6 +4235,7 @@ function MoneyScreen({ state, dispatch, tab, setTab, toast, ai }) {
         React.createElement(SegmentoGrande, { valor: grupoActivo, grupos: GRUPOS_DINERO, onChange: (g) => setTab(g.subs[0].k) }),
         React.createElement("div", { style: { display: "flex", gap: 7, margin: "10px 0 16px", overflowX: "auto", paddingBottom: 4, WebkitOverflowScrolling: "touch" } }, (GRUPOS_DINERO.find((g) => g.k === grupoActivo) || GRUPOS_DINERO[0]).subs.map((s) => (React.createElement(Chip, { key: s.k, active: tab === s.k, onClick: () => setTab(s.k) }, tr(s.n))))),
         tab === "fijos" && React.createElement(FixedPanel, { state: state, dispatch: dispatch }),
+        tab === "proyectos" && React.createElement(ProyectosPanel, { state: state, dispatch: dispatch, toast: toast }),
         (tab === "objetos" || tab === "colecciones" || tab === "empresas" || tab === "fiados") && (React.createElement(CollectionScreen, { state: state, dispatch: dispatch, soloTab: tab })),
         tab === "compartida" && React.createElement(SharedInvPanel, { state: state, dispatch: dispatch }),
         tab === "grupos" && React.createElement(GroupsPanel, { state: state, dispatch: dispatch, toast: toast }),
@@ -6679,6 +6758,261 @@ function OrgEventForm({ initial, onSave, onDelete }) {
    se ha movido desde la última actualización, y quién sube y baja.
    Nada de precios inventados: si no se ha actualizado, no se mueve.
    ============================================================ */
+/* Venta: si tienes catalogo son dos toques (producto + cuantas). Si no, pones
+   el importe a mano. Las dos formas acaban en el mismo sitio. */
+function VentaForm({ productos, onSave }) {
+    const [prod, setProd] = useState(productos[0] ? productos[0].id : null);
+    const [uds, setUds] = useState("1");
+    const [importe, setImporte] = useState("");
+    const [concepto, setConcepto] = useState("");
+    const [fecha, setFecha] = useState(todayISO());
+    const p = productos.find((x) => x.id === prod);
+    const n = Math.max(1, Number(uds) || 1);
+    const total = p ? Number(p.precio || 0) * n : Number(importe || 0);
+    const vale = total > 0;
+    return (React.createElement("div", null,
+        productos.length > 0 && (React.createElement(Field, { label: tr("¿Qué has vendido?") },
+            React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } },
+                productos.map((x) => React.createElement(Chip, { key: x.id, active: prod === x.id, onClick: () => setProd(x.id) }, x.nombre)),
+                React.createElement(Chip, { active: prod === null, onClick: () => setProd(null) }, tr("Otra cosa"))))),
+        p ? (React.createElement(Field, { label: tr("¿Cuántas?") },
+            React.createElement("input", { type: "number", inputMode: "numeric", style: inputStyle, value: uds, onChange: (e) => setUds(e.target.value) }),
+            React.createElement("div", { style: { color: C.good, fontSize: 13, fontWeight: 800, marginTop: 6 } }, money(total)))) : (React.createElement(React.Fragment, null,
+            React.createElement(Field, { label: tr("¿Cuánto has cobrado?") },
+                React.createElement("input", { type: "number", inputMode: "decimal", style: inputStyle, value: importe, onChange: (e) => setImporte(e.target.value), placeholder: "\u20AC", autoFocus: true })),
+            React.createElement(Field, { label: tr("¿De qué?") },
+                React.createElement("input", { style: inputStyle, value: concepto, onChange: (e) => setConcepto(e.target.value), placeholder: tr("Ej. Encargo a medida") })))),
+        React.createElement(Field, { label: tr("Fecha") },
+            React.createElement("input", { type: "date", style: inputStyle, value: fecha, onChange: (e) => setFecha(e.target.value) })),
+        React.createElement(PrimaryBtn, { full: true, color: vale ? C.good : C.ink3, onClick: () => vale && onSave({
+                type: "ingreso", amount: total, date: fecha,
+                note: p ? (n > 1 ? n + " × " + p.nombre : p.nombre) : (concepto.trim() || tr("Venta")),
+                prodId: p ? p.id : null, unidades: p ? n : null,
+            }) },
+            React.createElement(Check, { size: 18, strokeWidth: 3 }),
+            " ",
+            tr("Apuntar venta"))));
+}
+function GastoProyForm({ onSave }) {
+    const [importe, setImporte] = useState("");
+    const [concepto, setConcepto] = useState("");
+    const [tipo, setTipo] = useState("inversion");
+    const [fecha, setFecha] = useState(todayISO());
+    const vale = Number(importe) > 0 && concepto.trim();
+    return (React.createElement("div", null,
+        React.createElement(Field, { label: tr("¿Cuánto?") },
+            React.createElement("input", { type: "number", inputMode: "decimal", style: inputStyle, value: importe, onChange: (e) => setImporte(e.target.value), placeholder: "\u20AC", autoFocus: true })),
+        React.createElement(Field, { label: tr("¿En qué?") },
+            React.createElement("input", { style: inputStyle, value: concepto, onChange: (e) => setConcepto(e.target.value), placeholder: tr("Ej. Impresora, filamento…") })),
+        React.createElement(Field, { label: tr("¿Qué tipo de gasto es?") },
+            React.createElement("div", { style: { display: "grid", gap: 8 } }, GASTO_TIPOS.map((g) => (React.createElement("button", { key: g.k, onClick: () => setTipo(g.k), style: { ...filaDentro(tipo === g.k, C.yellow), padding: "11px 13px", cursor: "pointer", textAlign: "left" } },
+                React.createElement("div", { style: { color: C.textHi, fontWeight: 800, fontSize: 14 } }, tr(g.n)),
+                React.createElement("div", { style: { color: C.textLo, fontSize: 12 } }, tr(g.d))))))),
+        React.createElement(Field, { label: tr("Fecha") },
+            React.createElement("input", { type: "date", style: inputStyle, value: fecha, onChange: (e) => setFecha(e.target.value) })),
+        React.createElement(PrimaryBtn, { full: true, onClick: () => vale && onSave({ type: "gasto", amount: Number(importe), note: concepto.trim(), gastoTipo: tipo, date: fecha }) },
+            React.createElement(Check, { size: 18, strokeWidth: 3 }),
+            " ",
+            tr("Apuntar gasto"))));
+}
+function ProductoForm({ onSave }) {
+    const [nombre, setNombre] = useState("");
+    const [precio, setPrecio] = useState("");
+    const [coste, setCoste] = useState("");
+    const margen = Math.max(0, Number(precio || 0) - Number(coste || 0));
+    const vale = nombre.trim() && Number(precio) > 0;
+    return (React.createElement("div", null,
+        React.createElement(Field, { label: tr("¿Qué es?") },
+            React.createElement("input", { style: inputStyle, value: nombre, onChange: (e) => setNombre(e.target.value), placeholder: tr("Ej. Maceta, llavero…"), autoFocus: true })),
+        React.createElement(Field, { label: tr("¿A cuánto lo vendes?") },
+            React.createElement("input", { type: "number", inputMode: "decimal", style: inputStyle, value: precio, onChange: (e) => setPrecio(e.target.value), placeholder: "\u20AC" })),
+        React.createElement(Field, { label: tr("¿Cuánto material te lleva?") },
+            React.createElement("input", { type: "number", inputMode: "decimal", style: inputStyle, value: coste, onChange: (e) => setCoste(e.target.value), placeholder: "\u20AC" }),
+            React.createElement("div", { style: { color: C.textLo, fontSize: 11.5, marginTop: 6, lineHeight: 1.45 } }, tr("Lo que te cuesta hacer una: filamento, tornillos, embalaje. Si no lo sabes, déjalo en blanco."))),
+        margen > 0 && (React.createElement("div", { style: { ...filaDentro(false), padding: "11px 13px", marginBottom: 14 } },
+            React.createElement("div", { style: { color: C.textLo, fontSize: 11, fontWeight: 800, letterSpacing: 0.5 } }, tr("GANAS POR CADA UNA")),
+            React.createElement("div", { style: { color: C.good, fontWeight: 900, fontSize: 20 } }, money(margen)))),
+        React.createElement(PrimaryBtn, { full: true, onClick: () => vale && onSave({ nombre: nombre.trim(), precio: Number(precio), coste: Number(coste || 0) }) },
+            React.createElement(Check, { size: 18, strokeWidth: 3 }),
+            " ",
+            tr("Guardar producto"))));
+}
+function ProyectoDetalle({ state, dispatch, toast, proy, onBack }) {
+    const [sheet, setSheet] = useState(null);
+    const c = cuentasProyecto(state, proy.id);
+    const cMes = cuentasProyecto(state, proy.id, desdeDe("mes"));
+    const cSem = cuentasProyecto(state, proy.id, desdeDe("semana"));
+    const prods = (state.productos || []).filter((p) => p.projId === proy.id);
+    /* Un gasto o una venta es un MOVIMIENTO con la etiqueta del proyecto.
+       No se guarda nada dentro del proyecto: asi no puede descuadrarse. */
+    const apuntar = (d) => {
+        dispatch({ type: "add", col: "tx", item: {
+                id: uid(), date: d.date || todayISO(), amount: d.amount, note: d.note,
+                type: d.type, category: proy.nombre,
+                proj: proy.id, gastoTipo: d.gastoTipo || null,
+                prodId: d.prodId || null, unidades: d.unidades || null,
+            } });
+        setSheet(null);
+        toast && toast(d.type === "ingreso" ? tr("Venta apuntada ✓") : tr("Gasto apuntado ✓"), d.note);
+    };
+    return (React.createElement("div", null,
+        React.createElement("button", { onClick: onBack, style: { ...iconBtn, width: "auto", paddingInline: 12, height: 34, gap: 6, marginBottom: 12, fontWeight: 700, fontSize: 12.5, color: C.textLo } },
+            React.createElement(ChevronLeft, { size: 15 }),
+            " ",
+            tr("Proyectos")),
+        React.createElement("div", { style: { ...card, padding: 18, marginBottom: 12, borderColor: c.cubierto ? C.good : C.line } },
+            React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 11, marginBottom: 12 } },
+                React.createElement("span", { style: { fontSize: 26 } }, proy.emoji || "🛠️"),
+                React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                    React.createElement("div", { style: { color: C.textHi, fontWeight: 900, fontSize: 17 } }, proy.nombre),
+                    React.createElement("div", { style: { color: C.textLo, fontSize: 11.5 } }, tri("{n} apuntes", { n: c.movs.length }))),
+                React.createElement("button", { onClick: () => { if (confirm(tr("¿Borrar el proyecto? Los movimientos se quedan en tu dinero, solo pierden la etiqueta."))) {
+                        dispatch({ type: "remove", col: "proyectos", id: proy.id });
+                        onBack();
+                    } }, style: { ...iconBtn, width: 32, height: 32, color: C.textLo } },
+                    React.createElement(Trash2, { size: 14 }))),
+            c.cubierto ? (React.createElement("div", { style: { ...filaDentro(true), padding: 14, marginBottom: 12 } },
+                React.createElement("div", { style: { color: C.good, fontSize: 10.5, fontWeight: 800, letterSpacing: 0.6 } }, tr("GASTOS CUBIERTOS")),
+                React.createElement("div", { style: { color: C.good, fontWeight: 900, fontSize: 26, letterSpacing: -0.5 } },
+                    "+",
+                    money(c.beneficio)),
+                React.createElement("div", { style: { color: C.textLo, fontSize: 12, marginTop: 2 } }, tr("Esto ya es ganancia limpia.")))) : (React.createElement("div", { style: { marginBottom: 12 } },
+                React.createElement("div", { style: { color: C.textHi, fontWeight: 900, fontSize: 24, letterSpacing: -0.5 } }, money(c.falta)),
+                React.createElement("div", { style: { color: C.textLo, fontSize: 12.5, marginBottom: 10 } }, tr("es lo que te falta para cubrir gastos")),
+                React.createElement("div", { style: { height: 10, borderRadius: 999, background: C.rail, overflow: "hidden", marginBottom: 6 } },
+                    React.createElement("div", { style: { width: c.pct + "%", height: "100%", background: C.yellow, borderRadius: 999, transition: "width .5s" } })),
+                React.createElement("div", { style: { display: "flex", justifyContent: "space-between", color: C.textLo, fontSize: 11 } },
+                    React.createElement("span", null,
+                        money(c.ingresado),
+                        " ",
+                        tr("vendido")),
+                    React.createElement("span", null,
+                        money(c.gastos),
+                        " ",
+                        tr("gastado"))),
+                c.recurrente > 0 && (React.createElement("div", { style: { color: C.textLo, fontSize: 11, marginTop: 6 } }, tri("{i} de inversión · {r} que se repite", { i: money(c.inversion), r: money(c.recurrente) }))))),
+            React.createElement("div", { style: { display: "flex", gap: 8 } },
+                React.createElement("div", { style: { ...filaDentro(false), flex: 1, padding: "9px 11px" } },
+                    React.createElement("div", { style: { color: C.textLo, fontSize: 10, fontWeight: 800, letterSpacing: 0.5 } }, tr("ESTA SEMANA")),
+                    React.createElement("div", { style: { color: cSem.beneficio >= 0 ? C.good : C.bad, fontWeight: 900, fontSize: 14.5 } },
+                        cSem.beneficio >= 0 ? "+" : "",
+                        money(cSem.beneficio))),
+                React.createElement("div", { style: { ...filaDentro(false), flex: 1, padding: "9px 11px" } },
+                    React.createElement("div", { style: { color: C.textLo, fontSize: 10, fontWeight: 800, letterSpacing: 0.5 } }, tr("ESTE MES")),
+                    React.createElement("div", { style: { color: cMes.beneficio >= 0 ? C.good : C.bad, fontWeight: 900, fontSize: 14.5 } },
+                        cMes.beneficio >= 0 ? "+" : "",
+                        money(cMes.beneficio))))),
+        React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 16 } },
+            React.createElement("button", { onClick: () => setSheet("venta"), style: miniBtn(C.good, C.ink) }, tr("+ Venta")),
+            React.createElement("button", { onClick: () => setSheet("gasto"), style: miniBtn(C.ink3, C.textHi) }, tr("+ Gasto"))),
+        React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", margin: "0 0 10px" } },
+            React.createElement("h3", { style: { ...sectionH, fontSize: 13, margin: 0 } }, tr("Lo que vendes")),
+            React.createElement("button", { onClick: () => setSheet("producto"), style: { background: "none", border: "none", color: C.yellow, fontWeight: 800, fontSize: 12.5, cursor: "pointer", padding: 0 } }, tr("+ Producto"))),
+        prods.length === 0 ? (React.createElement("div", { style: { ...card, padding: 14, marginBottom: 16, color: C.textLo, fontSize: 12.5, lineHeight: 1.5 } }, tr("Define lo que vendes con su precio y lo que te cuesta hacerlo, y te digo cuántas unidades te faltan para cubrir gastos."))) : (React.createElement("div", { style: { display: "grid", gap: 8, marginBottom: 16 } }, prods.map((p) => {
+            const m = margenDe(p);
+            const faltan = faltanUnidades(c, p);
+            return (React.createElement("div", { key: p.id, style: { ...card, padding: 13 } },
+                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: faltan ? 8 : 0 } },
+                    React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                        React.createElement("div", { style: { color: C.textHi, fontWeight: 800, fontSize: 14 } }, p.nombre),
+                        React.createElement("div", { style: { color: C.textLo, fontSize: 11.5 } }, tri("Vendes a {v} · te cuesta {c} · ganas {m}", { v: money(p.precio), c: money(p.coste), m: money(m) }))),
+                    React.createElement("button", { onClick: () => dispatch({ type: "remove", col: "productos", id: p.id }), style: { ...iconBtn, width: 30, height: 30, color: C.textLo } },
+                        React.createElement(Trash2, { size: 13 }))),
+                faltan > 0 && (React.createElement("div", { style: { ...filaDentro(false), padding: "8px 11px", color: C.yellow, fontWeight: 800, fontSize: 13 } }, faltan === 1 ? tri("Con 1 más cubres gastos", {}) : tri("Te faltan {n} para cubrir gastos", { n: faltan })))));
+        }))),
+        React.createElement("h3", { style: { ...sectionH, fontSize: 13, margin: "0 0 10px" } }, tr("Movimientos del proyecto")),
+        c.movs.length === 0 ? (React.createElement("div", { style: { ...card, padding: 14, color: C.textLo, fontSize: 12.5 } }, tr("Todavía no has apuntado nada."))) : (React.createElement("div", { style: { display: "grid", gap: 7 } }, [...c.movs].sort((a, b) => String(b.date || "").localeCompare(String(a.date || ""))).map((x) => (React.createElement("div", { key: x.id, style: { ...filaDentro(false), padding: "10px 12px", display: "flex", alignItems: "center", gap: 10 } },
+            React.createElement("span", { style: { fontSize: 15 } }, x.type === "ingreso" ? "💰" : x.gastoTipo === "recurrente" ? "🔁" : "🏗️"),
+            React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                React.createElement("div", { style: { color: C.textHi, fontWeight: 700, fontSize: 13 } }, x.note || (x.type === "ingreso" ? tr("Venta") : tr("Gasto"))),
+                React.createElement("div", { style: { color: C.textLo, fontSize: 11 } },
+                    fmtDate(x.date),
+                    x.unidades ? tri(" · {n} uds", { n: x.unidades }) : "")),
+            React.createElement("span", { style: { color: x.type === "ingreso" ? C.good : C.bad, fontWeight: 800, fontSize: 13 } },
+                x.type === "ingreso" ? "+" : "−",
+                money(x.amount)),
+            React.createElement("button", { onClick: () => dispatch({ type: "remove", col: "tx", id: x.id }), title: tr("Borrar el apunte"), style: { ...iconBtn, width: 28, height: 28, color: C.textLo, flexShrink: 0 } },
+                React.createElement(Trash2, { size: 12 }))))))),
+        React.createElement("div", { style: { color: C.textLo, fontSize: 11, marginTop: 10, lineHeight: 1.45 } }, tr("Todo esto son movimientos normales de tu dinero: cuentan en tu balance una sola vez. Si borras uno desde Movimientos, desaparece también de aquí.")),
+        React.createElement("div", { style: { height: 110 } }),
+        React.createElement(Sheet, { open: sheet === "venta", onClose: () => setSheet(null), title: tr("Apuntar venta") },
+            React.createElement(VentaForm, { productos: prods, onSave: apuntar })),
+        React.createElement(Sheet, { open: sheet === "gasto", onClose: () => setSheet(null), title: tr("Apuntar gasto") },
+            React.createElement(GastoProyForm, { onSave: apuntar })),
+        React.createElement(Sheet, { open: sheet === "producto", onClose: () => setSheet(null), title: tr("Nuevo producto") },
+            React.createElement(ProductoForm, { onSave: (d) => { dispatch({ type: "add", col: "productos", item: { id: uid(), projId: proy.id, ...d } }); setSheet(null); } }))));
+}
+function ProyectosPanel({ state, dispatch, toast }) {
+    const [abierto, setAbierto] = useState(null);
+    const [sheet, setSheet] = useState(null);
+    const [periodo, setPeriodo] = useState("mes");
+    const proys = state.proyectos || [];
+    const desde = desdeDe(periodo);
+    if (abierto) {
+        const p = proys.find((x) => x.id === abierto);
+        if (!p) {
+            setAbierto(null);
+            return null;
+        }
+        return React.createElement(ProyectoDetalle, { state: state, dispatch: dispatch, toast: toast, proy: p, onBack: () => setAbierto(null) });
+    }
+    const total = proys.reduce((s, p) => {
+        const c = cuentasProyecto(state, p.id, desde);
+        return { ing: s.ing + c.ingresado, gas: s.gas + c.gastos, ben: s.ben + c.beneficio };
+    }, { ing: 0, gas: 0, ben: 0 });
+    return (React.createElement("div", null,
+        proys.length === 0 ? (React.createElement("div", { style: { ...card, padding: 20, marginBottom: 14 } },
+            React.createElement("div", { style: { fontSize: 30, marginBottom: 8, textAlign: "center" } }, "\uD83D\uDEE0\uFE0F"),
+            React.createElement("div", { style: { color: C.textHi, fontWeight: 900, fontSize: 16, marginBottom: 6, textAlign: "center" } }, tr("Tus negocios, con números")),
+            React.createElement("div", { style: { color: C.textLo, fontSize: 13, lineHeight: 1.55, marginBottom: 14 } }, tr("Metes lo que te has gastado y vas apuntando las ventas. La app te dice cuánto te falta para cubrirlo y, a partir de ahí, lo que ganas de verdad.")),
+            React.createElement(PrimaryBtn, { full: true, onClick: () => setSheet("nuevo") },
+                React.createElement(Plus, { size: 17, strokeWidth: 3 }),
+                " ",
+                tr("Nuevo proyecto")))) : (React.createElement(React.Fragment, null,
+            React.createElement("div", { style: { display: "flex", gap: 7, marginBottom: 14, overflowX: "auto", paddingBottom: 4 } }, PERIODOS_PROY.map((x) => React.createElement(Chip, { key: x.k, active: periodo === x.k, onClick: () => setPeriodo(x.k) }, tr(x.n)))),
+            proys.length > 1 && (React.createElement("div", { style: { ...card, padding: 15, marginBottom: 14 } },
+                React.createElement("div", { style: { color: C.textLo, fontSize: 11, fontWeight: 800, letterSpacing: 0.6, textTransform: "uppercase", marginBottom: 4 } }, tr("Todos los proyectos")),
+                React.createElement("div", { style: { color: total.ben >= 0 ? C.good : C.bad, fontWeight: 900, fontSize: 26, letterSpacing: -0.5 } },
+                    total.ben >= 0 ? "+" : "",
+                    money(total.ben)),
+                React.createElement("div", { style: { color: C.textLo, fontSize: 12, marginTop: 2 } }, tri("{i} de ventas · {g} de gastos", { i: money(total.ing), g: money(total.gas) })))),
+            React.createElement("div", { style: { display: "grid", gap: 10 } }, proys.map((p) => {
+                const c = cuentasProyecto(state, p.id, desde);
+                const vida = cuentasProyecto(state, p.id);
+                return (React.createElement("button", { key: p.id, onClick: () => setAbierto(p.id), style: { ...card, padding: 15, width: "100%", textAlign: "left", cursor: "pointer", border: "1px solid " + (vida.cubierto ? C.good : C.line) } },
+                    React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 11, marginBottom: 10 } },
+                        React.createElement("span", { style: { fontSize: 22 } }, p.emoji || "🛠️"),
+                        React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                            React.createElement("div", { style: { color: C.textHi, fontWeight: 800, fontSize: 15.5 } }, p.nombre),
+                            React.createElement("div", { style: { color: vida.cubierto ? C.good : C.textLo, fontSize: 11.5, fontWeight: 700 } }, vida.cubierto ? tr("Gastos cubiertos ✓") : tri("Faltan {n} para cubrir gastos", { n: money(vida.falta) }))),
+                        React.createElement(ChevronRight, { size: 18, color: C.textLo })),
+                    React.createElement("div", { style: { height: 7, borderRadius: 999, background: C.rail, overflow: "hidden", marginBottom: 9 } },
+                        React.createElement("div", { style: { width: vida.pct + "%", height: "100%", background: vida.cubierto ? C.good : C.yellow, borderRadius: 999, transition: "width .5s" } })),
+                    React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline" } },
+                        React.createElement("span", { style: { color: C.textLo, fontSize: 11 } }, tr(PERIODOS_PROY.find((x) => x.k === periodo).n)),
+                        React.createElement("span", { style: { color: c.beneficio >= 0 ? C.good : C.bad, fontWeight: 900, fontSize: 15 } },
+                            c.beneficio >= 0 ? "+" : "",
+                            money(c.beneficio)))));
+            })),
+            React.createElement("button", { onClick: () => setSheet("nuevo"), style: { ...miniBtn(C.ink3, C.textHi), width: "100%", marginTop: 12 } }, tr("+ Nuevo proyecto")))),
+        React.createElement("div", { style: { height: 110 } }),
+        React.createElement(Sheet, { open: sheet === "nuevo", onClose: () => setSheet(null), title: tr("Nuevo proyecto") },
+            React.createElement(ProyectoForm, { onSave: (d) => { dispatch({ type: "add", col: "proyectos", item: { id: uid(), ...d } }); setSheet(null); } }))));
+}
+const EMOJIS_PROY = ["🛠️", "🖨️", "👕", "🎨", "📦", "🍰", "💻", "🌱", "🎸", "📸"];
+function ProyectoForm({ onSave }) {
+    const [nombre, setNombre] = useState("");
+    const [emoji, setEmoji] = useState("🛠️");
+    return (React.createElement("div", null,
+        React.createElement(Field, { label: tr("¿Qué montas?") },
+            React.createElement("input", { style: inputStyle, value: nombre, onChange: (e) => setNombre(e.target.value), placeholder: tr("Ej. Impresión 3D, camisetas…"), autoFocus: true })),
+        React.createElement(Field, { label: tr("Icono") },
+            React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } }, EMOJIS_PROY.map((e) => React.createElement(Chip, { key: e, active: emoji === e, onClick: () => setEmoji(e) }, e)))),
+        React.createElement(PrimaryBtn, { full: true, onClick: () => nombre.trim() && onSave({ nombre: nombre.trim(), emoji }) },
+            React.createElement(Check, { size: 18, strokeWidth: 3 }),
+            " ",
+            tr("Crear"))));
+}
 function ObjetosPanel({ state, dispatch, onIrAColecciones }) {
     const [busy, setBusy] = useState(false);
     const [prog, setProg] = useState(null);
