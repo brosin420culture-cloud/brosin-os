@@ -25,7 +25,7 @@ import {
    diccionario activo; si falta, devuelve el español (nunca se ve un hueco).
    Diccionarios: /i18n/{lang}.json — se descargan solo al elegir el idioma y
    quedan cacheados. El marco remonta con key={...lang} al cambiar. */
-const I18N_VER = "47"; // rompe la caché del SW al subir versión
+const I18N_VER = "48"; // rompe la caché del SW al subir versión
 const LANGS = [
   { k: "auto", label: "Automático" },
   { k: "es", label: "Español", flag: "🇪🇸", locale: "es-ES" },
@@ -1224,7 +1224,9 @@ const EMPTY = {
   diario: [],      // la nota del día, una por fecha
   temporadas: [],  // bloques de 30 o 90 días con su resultado guardado
   clanes: [],
-  registro: [], // cada movimiento del juego con su motivo: que paso, cuando y por que      // clasificación con amigos, por códigos: sin servidor
+  registro: [],
+  proyectos: [], // negocios: la impresora 3D, etc. Sus gastos y ventas son movimientos etiquetados
+  productos: [], // catalogo de cada proyecto: precio de venta y coste unitario // cada movimiento del juego con su motivo: que paso, cuando y por que      // clasificación con amigos, por códigos: sin servidor
   // Marcas de borrado: { coleccion: { id: fechaISO } }. Sin esto, al fusionar
   // dos dispositivos lo borrado en uno "revive" desde el otro.
   _tomb: {},
@@ -4295,6 +4297,74 @@ function FixedForm({ initial, onSave }) {
 /* Los tres grupos de Dinero. Colecciones, Objetos, Empresas y Fiados se mudan
    aquí desde su propia pestaña: son patrimonio y cosas prestadas, o sea, dinero.
    Una pestaña menos abajo y todo lo que vale algo en el mismo sitio. */
+/* ============================================================
+   PROYECTOS - saber cuando un negocio deja de costarte y empieza a pagarte
+
+   REGLA DE ORO: un gasto o una venta de un proyecto NO es una copia de un
+   movimiento, ES un movimiento (`state.tx`) con el campo `proj`. Solo hay una
+   copia del dinero. Por eso:
+     - el balance nunca se infla ni se cuenta dos veces,
+     - si borras el movimiento desaparece del proyecto,
+     - si le cambias el importe cambia en los dos sitios.
+   Si algun dia te tienta guardar los gastos dentro del proyecto: no lo hagas.
+   Ese fue el fallo de las inversiones en la v36.
+   ============================================================ */
+const GASTO_TIPOS = [
+  { k: "inversion", n: "Inversión", d: "Se paga una vez: la máquina, las herramientas." },
+  { k: "recurrente", n: "Gasto que se repite", d: "Material, luz, una cuota. Sube el objetivo cada vez." },
+];
+
+/* Movimientos de un proyecto, opcionalmente desde una fecha */
+const movsDeProyecto = (state, projId, desdeISO) =>
+  (state.tx || []).filter((x) => x.proj === projId && (!desdeISO || String(x.date || "") >= desdeISO));
+
+/* Las cuentas de un proyecto. Todo sale de los movimientos: no hay un segundo
+   sitio donde puedan descuadrarse. */
+function cuentasProyecto(state, projId, desdeISO) {
+  const movs = movsDeProyecto(state, projId, desdeISO);
+  let inversion = 0, recurrente = 0, ingresado = 0, unidades = 0;
+  movs.forEach((x) => {
+    const n = Number(x.amount || 0);
+    if (x.type === "ingreso") { ingresado += n; unidades += Number(x.unidades || 0); }
+    else if (x.gastoTipo === "recurrente") recurrente += n;
+    else inversion += n;
+  });
+  const gastos = inversion + recurrente;
+  const beneficio = ingresado - gastos;          // lo que de verdad has ganado
+  const falta = Math.max(0, gastos - ingresado); // lo que queda para cubrir
+  return {
+    movs, inversion, recurrente, gastos, ingresado, unidades, beneficio, falta,
+    cubierto: gastos > 0 && ingresado >= gastos,
+    pct: gastos > 0 ? Math.min(100, (ingresado / gastos) * 100) : (ingresado > 0 ? 100 : 0),
+    ventaMedia: unidades > 0 ? ingresado / unidades : 0,
+  };
+}
+
+/* Cuantas unidades faltan de un producto para cubrir lo que queda.
+   Se usa el MARGEN (precio - coste), no el precio: el material de esas unidades
+   futuras lo vas a pagar tambien, y si no lo descontaras te saldria un numero
+   optimista que es justo lo que no quieres de una app de dinero. */
+const margenDe = (p) => Math.max(0, Number(p.precio || 0) - Number(p.coste || 0));
+function faltanUnidades(cuentas, producto) {
+  const m = margenDe(producto);
+  if (!m || cuentas.falta <= 0) return 0;
+  return Math.ceil(cuentas.falta / m);
+}
+
+/* Periodos para "cuanto gano al mes". Lunes como primer dia de la semana. */
+function desdeDe(periodo) {
+  const d = new Date(), p = (n) => String(n).padStart(2, "0");
+  if (periodo === "semana") { const dia = (d.getDay() + 6) % 7; d.setDate(d.getDate() - dia); }
+  else if (periodo === "mes") d.setDate(1);
+  else return null;
+  return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+}
+const PERIODOS_PROY = [
+  { k: "semana", n: "Esta semana" },
+  { k: "mes", n: "Este mes" },
+  { k: "todo", n: "Desde el principio" },
+];
+
 const GRUPOS_DINERO = [
   { k: "dia", n: "Día a día", e: "💳", subs: [
     { k: "movimientos", n: "Movimientos" }, { k: "fijos", n: "Fijos" },
@@ -4306,6 +4376,8 @@ const GRUPOS_DINERO = [
   { k: "otros", n: "Con otros", e: "🤝", subs: [
     { k: "compartida", n: "Compartida" }, { k: "grupos", n: "Grupos" },
     { k: "fiados", n: "Fiados" } ] },
+  { k: "negocios", n: "Proyectos", e: "🛠️", subs: [
+    { k: "proyectos", n: "Mis proyectos" } ] },
 ];
 const grupoDe = (hoja) => (GRUPOS_DINERO.find((g) => g.subs.some((s) => s.k === hoja)) || GRUPOS_DINERO[0]).k;
 
@@ -4404,6 +4476,7 @@ function MoneyScreen({ state, dispatch, tab, setTab, toast, ai }) {
       </div>
 
       {tab === "fijos" && <FixedPanel state={state} dispatch={dispatch} />}
+      {tab === "proyectos" && <ProyectosPanel state={state} dispatch={dispatch} toast={toast} />}
       {/* lo que se mudó desde la antigua pestaña Colección */}
       {(tab === "objetos" || tab === "colecciones" || tab === "empresas" || tab === "fiados") && (
         <CollectionScreen state={state} dispatch={dispatch} soloTab={tab} />
@@ -7271,6 +7344,369 @@ function OrgEventForm({ initial, onSave, onDelete }) {
    se ha movido desde la última actualización, y quién sube y baja.
    Nada de precios inventados: si no se ha actualizado, no se mueve.
    ============================================================ */
+/* Venta: si tienes catalogo son dos toques (producto + cuantas). Si no, pones
+   el importe a mano. Las dos formas acaban en el mismo sitio. */
+function VentaForm({ productos, onSave }) {
+  const [prod, setProd] = useState(productos[0] ? productos[0].id : null);
+  const [uds, setUds] = useState("1");
+  const [importe, setImporte] = useState("");
+  const [concepto, setConcepto] = useState("");
+  const [fecha, setFecha] = useState(todayISO());
+  const p = productos.find((x) => x.id === prod);
+  const n = Math.max(1, Number(uds) || 1);
+  const total = p ? Number(p.precio || 0) * n : Number(importe || 0);
+  const vale = total > 0;
+  return (
+    <div>
+      {productos.length > 0 && (
+        <Field label={tr("¿Qué has vendido?")}>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {productos.map((x) => <Chip key={x.id} active={prod === x.id} onClick={() => setProd(x.id)}>{x.nombre}</Chip>)}
+            <Chip active={prod === null} onClick={() => setProd(null)}>{tr("Otra cosa")}</Chip>
+          </div>
+        </Field>
+      )}
+      {p ? (
+        <Field label={tr("¿Cuántas?")}>
+          <input type="number" inputMode="numeric" style={inputStyle} value={uds} onChange={(e) => setUds(e.target.value)} />
+          <div style={{ color: C.good, fontSize: 13, fontWeight: 800, marginTop: 6 }}>{money(total)}</div>
+        </Field>
+      ) : (<>
+        <Field label={tr("¿Cuánto has cobrado?")}>
+          <input type="number" inputMode="decimal" style={inputStyle} value={importe} onChange={(e) => setImporte(e.target.value)} placeholder="€" autoFocus />
+        </Field>
+        <Field label={tr("¿De qué?")}>
+          <input style={inputStyle} value={concepto} onChange={(e) => setConcepto(e.target.value)} placeholder={tr("Ej. Encargo a medida")} />
+        </Field>
+      </>)}
+      <Field label={tr("Fecha")}>
+        <input type="date" style={inputStyle} value={fecha} onChange={(e) => setFecha(e.target.value)} />
+      </Field>
+      <PrimaryBtn full color={vale ? C.good : C.ink3} onClick={() => vale && onSave({
+        type: "ingreso", amount: total, date: fecha,
+        note: p ? (n > 1 ? n + " × " + p.nombre : p.nombre) : (concepto.trim() || tr("Venta")),
+        prodId: p ? p.id : null, unidades: p ? n : null,
+      })}><Check size={18} strokeWidth={3} /> {tr("Apuntar venta")}</PrimaryBtn>
+    </div>
+  );
+}
+
+function GastoProyForm({ onSave }) {
+  const [importe, setImporte] = useState("");
+  const [concepto, setConcepto] = useState("");
+  const [tipo, setTipo] = useState("inversion");
+  const [fecha, setFecha] = useState(todayISO());
+  const vale = Number(importe) > 0 && concepto.trim();
+  return (
+    <div>
+      <Field label={tr("¿Cuánto?")}>
+        <input type="number" inputMode="decimal" style={inputStyle} value={importe} onChange={(e) => setImporte(e.target.value)} placeholder="€" autoFocus />
+      </Field>
+      <Field label={tr("¿En qué?")}>
+        <input style={inputStyle} value={concepto} onChange={(e) => setConcepto(e.target.value)} placeholder={tr("Ej. Impresora, filamento…")} />
+      </Field>
+      <Field label={tr("¿Qué tipo de gasto es?")}>
+        <div style={{ display: "grid", gap: 8 }}>
+          {GASTO_TIPOS.map((g) => (
+            <button key={g.k} onClick={() => setTipo(g.k)} style={{ ...filaDentro(tipo === g.k, C.yellow), padding: "11px 13px", cursor: "pointer", textAlign: "left" }}>
+              <div style={{ color: C.textHi, fontWeight: 800, fontSize: 14 }}>{tr(g.n)}</div>
+              <div style={{ color: C.textLo, fontSize: 12 }}>{tr(g.d)}</div>
+            </button>
+          ))}
+        </div>
+      </Field>
+      <Field label={tr("Fecha")}>
+        <input type="date" style={inputStyle} value={fecha} onChange={(e) => setFecha(e.target.value)} />
+      </Field>
+      <PrimaryBtn full onClick={() => vale && onSave({ type: "gasto", amount: Number(importe), note: concepto.trim(), gastoTipo: tipo, date: fecha })}>
+        <Check size={18} strokeWidth={3} /> {tr("Apuntar gasto")}
+      </PrimaryBtn>
+    </div>
+  );
+}
+
+function ProductoForm({ onSave }) {
+  const [nombre, setNombre] = useState("");
+  const [precio, setPrecio] = useState("");
+  const [coste, setCoste] = useState("");
+  const margen = Math.max(0, Number(precio || 0) - Number(coste || 0));
+  const vale = nombre.trim() && Number(precio) > 0;
+  return (
+    <div>
+      <Field label={tr("¿Qué es?")}>
+        <input style={inputStyle} value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder={tr("Ej. Maceta, llavero…")} autoFocus />
+      </Field>
+      <Field label={tr("¿A cuánto lo vendes?")}>
+        <input type="number" inputMode="decimal" style={inputStyle} value={precio} onChange={(e) => setPrecio(e.target.value)} placeholder="€" />
+      </Field>
+      <Field label={tr("¿Cuánto material te lleva?")}>
+        <input type="number" inputMode="decimal" style={inputStyle} value={coste} onChange={(e) => setCoste(e.target.value)} placeholder="€" />
+        <div style={{ color: C.textLo, fontSize: 11.5, marginTop: 6, lineHeight: 1.45 }}>
+          {tr("Lo que te cuesta hacer una: filamento, tornillos, embalaje. Si no lo sabes, déjalo en blanco.")}
+        </div>
+      </Field>
+      {margen > 0 && (
+        <div style={{ ...filaDentro(false), padding: "11px 13px", marginBottom: 14 }}>
+          <div style={{ color: C.textLo, fontSize: 11, fontWeight: 800, letterSpacing: 0.5 }}>{tr("GANAS POR CADA UNA")}</div>
+          <div style={{ color: C.good, fontWeight: 900, fontSize: 20 }}>{money(margen)}</div>
+        </div>
+      )}
+      <PrimaryBtn full onClick={() => vale && onSave({ nombre: nombre.trim(), precio: Number(precio), coste: Number(coste || 0) })}>
+        <Check size={18} strokeWidth={3} /> {tr("Guardar producto")}
+      </PrimaryBtn>
+    </div>
+  );
+}
+
+function ProyectoDetalle({ state, dispatch, toast, proy, onBack }) {
+  const [sheet, setSheet] = useState(null);
+  const c = cuentasProyecto(state, proy.id);
+  const cMes = cuentasProyecto(state, proy.id, desdeDe("mes"));
+  const cSem = cuentasProyecto(state, proy.id, desdeDe("semana"));
+  const prods = (state.productos || []).filter((p) => p.projId === proy.id);
+
+  /* Un gasto o una venta es un MOVIMIENTO con la etiqueta del proyecto.
+     No se guarda nada dentro del proyecto: asi no puede descuadrarse. */
+  const apuntar = (d) => {
+    dispatch({ type: "add", col: "tx", item: {
+      id: uid(), date: d.date || todayISO(), amount: d.amount, note: d.note,
+      type: d.type, category: proy.nombre,
+      proj: proy.id, gastoTipo: d.gastoTipo || null,
+      prodId: d.prodId || null, unidades: d.unidades || null,
+    } });
+    setSheet(null);
+    toast && toast(d.type === "ingreso" ? tr("Venta apuntada ✓") : tr("Gasto apuntado ✓"), d.note);
+  };
+
+  return (
+    <div>
+      <button onClick={onBack} style={{ ...iconBtn, width: "auto", paddingInline: 12, height: 34, gap: 6, marginBottom: 12, fontWeight: 700, fontSize: 12.5, color: C.textLo }}>
+        <ChevronLeft size={15} /> {tr("Proyectos")}
+      </button>
+
+      <div style={{ ...card, padding: 18, marginBottom: 12, borderColor: c.cubierto ? C.good : C.line }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: 12 }}>
+          <span style={{ fontSize: 26 }}>{proy.emoji || "🛠️"}</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ color: C.textHi, fontWeight: 900, fontSize: 17 }}>{proy.nombre}</div>
+            <div style={{ color: C.textLo, fontSize: 11.5 }}>{tri("{n} apuntes", { n: c.movs.length })}</div>
+          </div>
+          <button onClick={() => { if (confirm(tr("¿Borrar el proyecto? Los movimientos se quedan en tu dinero, solo pierden la etiqueta."))) { dispatch({ type: "remove", col: "proyectos", id: proy.id }); onBack(); } }} style={{ ...iconBtn, width: 32, height: 32, color: C.textLo }}><Trash2 size={14} /></button>
+        </div>
+
+        {c.cubierto ? (
+          <div style={{ ...filaDentro(true), padding: 14, marginBottom: 12 }}>
+            <div style={{ color: C.good, fontSize: 10.5, fontWeight: 800, letterSpacing: 0.6 }}>{tr("GASTOS CUBIERTOS")}</div>
+            <div style={{ color: C.good, fontWeight: 900, fontSize: 26, letterSpacing: -0.5 }}>+{money(c.beneficio)}</div>
+            <div style={{ color: C.textLo, fontSize: 12, marginTop: 2 }}>{tr("Esto ya es ganancia limpia.")}</div>
+          </div>
+        ) : (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ color: C.textHi, fontWeight: 900, fontSize: 24, letterSpacing: -0.5 }}>{money(c.falta)}</div>
+            <div style={{ color: C.textLo, fontSize: 12.5, marginBottom: 10 }}>{tr("es lo que te falta para cubrir gastos")}</div>
+            <div style={{ height: 10, borderRadius: 999, background: C.rail, overflow: "hidden", marginBottom: 6 }}>
+              <div style={{ width: c.pct + "%", height: "100%", background: C.yellow, borderRadius: 999, transition: "width .5s" }} />
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", color: C.textLo, fontSize: 11 }}>
+              <span>{money(c.ingresado)} {tr("vendido")}</span><span>{money(c.gastos)} {tr("gastado")}</span>
+            </div>
+            {/* el desglose importa: la maquina se paga una vez, el material vuelve cada mes */}
+            {c.recurrente > 0 && (
+              <div style={{ color: C.textLo, fontSize: 11, marginTop: 6 }}>
+                {tri("{i} de inversión · {r} que se repite", { i: money(c.inversion), r: money(c.recurrente) })}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ ...filaDentro(false), flex: 1, padding: "9px 11px" }}>
+            <div style={{ color: C.textLo, fontSize: 10, fontWeight: 800, letterSpacing: 0.5 }}>{tr("ESTA SEMANA")}</div>
+            <div style={{ color: cSem.beneficio >= 0 ? C.good : C.bad, fontWeight: 900, fontSize: 14.5 }}>{cSem.beneficio >= 0 ? "+" : ""}{money(cSem.beneficio)}</div>
+          </div>
+          <div style={{ ...filaDentro(false), flex: 1, padding: "9px 11px" }}>
+            <div style={{ color: C.textLo, fontSize: 10, fontWeight: 800, letterSpacing: 0.5 }}>{tr("ESTE MES")}</div>
+            <div style={{ color: cMes.beneficio >= 0 ? C.good : C.bad, fontWeight: 900, fontSize: 14.5 }}>{cMes.beneficio >= 0 ? "+" : ""}{money(cMes.beneficio)}</div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <button onClick={() => setSheet("venta")} style={miniBtn(C.good, C.ink)}>{tr("+ Venta")}</button>
+        <button onClick={() => setSheet("gasto")} style={miniBtn(C.ink3, C.textHi)}>{tr("+ Gasto")}</button>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "0 0 10px" }}>
+        <h3 style={{ ...sectionH, fontSize: 13, margin: 0 }}>{tr("Lo que vendes")}</h3>
+        <button onClick={() => setSheet("producto")} style={{ background: "none", border: "none", color: C.yellow, fontWeight: 800, fontSize: 12.5, cursor: "pointer", padding: 0 }}>{tr("+ Producto")}</button>
+      </div>
+      {prods.length === 0 ? (
+        <div style={{ ...card, padding: 14, marginBottom: 16, color: C.textLo, fontSize: 12.5, lineHeight: 1.5 }}>
+          {tr("Define lo que vendes con su precio y lo que te cuesta hacerlo, y te digo cuántas unidades te faltan para cubrir gastos.")}
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 8, marginBottom: 16 }}>
+          {prods.map((p) => {
+            const m = margenDe(p);
+            const faltan = faltanUnidades(c, p);
+            return (
+              <div key={p.id} style={{ ...card, padding: 13 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: faltan ? 8 : 0 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ color: C.textHi, fontWeight: 800, fontSize: 14 }}>{p.nombre}</div>
+                    <div style={{ color: C.textLo, fontSize: 11.5 }}>{tri("Vendes a {v} · te cuesta {c} · ganas {m}", { v: money(p.precio), c: money(p.coste), m: money(m) })}</div>
+                  </div>
+                  <button onClick={() => dispatch({ type: "remove", col: "productos", id: p.id })} style={{ ...iconBtn, width: 30, height: 30, color: C.textLo }}><Trash2 size={13} /></button>
+                </div>
+                {faltan > 0 && (
+                  <div style={{ ...filaDentro(false), padding: "8px 11px", color: C.yellow, fontWeight: 800, fontSize: 13 }}>
+                    {faltan === 1 ? tri("Con 1 más cubres gastos", {}) : tri("Te faltan {n} para cubrir gastos", { n: faltan })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <h3 style={{ ...sectionH, fontSize: 13, margin: "0 0 10px" }}>{tr("Movimientos del proyecto")}</h3>
+      {c.movs.length === 0 ? (
+        <div style={{ ...card, padding: 14, color: C.textLo, fontSize: 12.5 }}>{tr("Todavía no has apuntado nada.")}</div>
+      ) : (
+        <div style={{ display: "grid", gap: 7 }}>
+          {[...c.movs].sort((a, b) => String(b.date || "").localeCompare(String(a.date || ""))).map((x) => (
+            <div key={x.id} style={{ ...filaDentro(false), padding: "10px 12px", display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 15 }}>{x.type === "ingreso" ? "💰" : x.gastoTipo === "recurrente" ? "🔁" : "🏗️"}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ color: C.textHi, fontWeight: 700, fontSize: 13 }}>{x.note || (x.type === "ingreso" ? tr("Venta") : tr("Gasto"))}</div>
+                <div style={{ color: C.textLo, fontSize: 11 }}>{fmtDate(x.date)}{x.unidades ? tri(" · {n} uds", { n: x.unidades }) : ""}</div>
+              </div>
+              <span style={{ color: x.type === "ingreso" ? C.good : C.bad, fontWeight: 800, fontSize: 13 }}>{x.type === "ingreso" ? "+" : "−"}{money(x.amount)}</span>
+              <button onClick={() => dispatch({ type: "remove", col: "tx", id: x.id })} title={tr("Borrar el apunte")} style={{ ...iconBtn, width: 28, height: 28, color: C.textLo, flexShrink: 0 }}><Trash2 size={12} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ color: C.textLo, fontSize: 11, marginTop: 10, lineHeight: 1.45 }}>
+        {tr("Todo esto son movimientos normales de tu dinero: cuentan en tu balance una sola vez. Si borras uno desde Movimientos, desaparece también de aquí.")}
+      </div>
+      <div style={{ height: 110 }} />
+
+      <Sheet open={sheet === "venta"} onClose={() => setSheet(null)} title={tr("Apuntar venta")}>
+        <VentaForm productos={prods} onSave={apuntar} />
+      </Sheet>
+      <Sheet open={sheet === "gasto"} onClose={() => setSheet(null)} title={tr("Apuntar gasto")}>
+        <GastoProyForm onSave={apuntar} />
+      </Sheet>
+      <Sheet open={sheet === "producto"} onClose={() => setSheet(null)} title={tr("Nuevo producto")}>
+        <ProductoForm onSave={(d) => { dispatch({ type: "add", col: "productos", item: { id: uid(), projId: proy.id, ...d } }); setSheet(null); }} />
+      </Sheet>
+    </div>
+  );
+}
+
+function ProyectosPanel({ state, dispatch, toast }) {
+  const [abierto, setAbierto] = useState(null);
+  const [sheet, setSheet] = useState(null);
+  const [periodo, setPeriodo] = useState("mes");
+  const proys = state.proyectos || [];
+  const desde = desdeDe(periodo);
+
+  if (abierto) {
+    const p = proys.find((x) => x.id === abierto);
+    if (!p) { setAbierto(null); return null; }
+    return <ProyectoDetalle state={state} dispatch={dispatch} toast={toast} proy={p} onBack={() => setAbierto(null)} />;
+  }
+
+  const total = proys.reduce((s, p) => {
+    const c = cuentasProyecto(state, p.id, desde);
+    return { ing: s.ing + c.ingresado, gas: s.gas + c.gastos, ben: s.ben + c.beneficio };
+  }, { ing: 0, gas: 0, ben: 0 });
+
+  return (
+    <div>
+      {proys.length === 0 ? (
+        <div style={{ ...card, padding: 20, marginBottom: 14 }}>
+          <div style={{ fontSize: 30, marginBottom: 8, textAlign: "center" }}>🛠️</div>
+          <div style={{ color: C.textHi, fontWeight: 900, fontSize: 16, marginBottom: 6, textAlign: "center" }}>{tr("Tus negocios, con números")}</div>
+          <div style={{ color: C.textLo, fontSize: 13, lineHeight: 1.55, marginBottom: 14 }}>
+            {tr("Metes lo que te has gastado y vas apuntando las ventas. La app te dice cuánto te falta para cubrirlo y, a partir de ahí, lo que ganas de verdad.")}
+          </div>
+          <PrimaryBtn full onClick={() => setSheet("nuevo")}><Plus size={17} strokeWidth={3} /> {tr("Nuevo proyecto")}</PrimaryBtn>
+        </div>
+      ) : (
+        <>
+          <div style={{ display: "flex", gap: 7, marginBottom: 14, overflowX: "auto", paddingBottom: 4 }}>
+            {PERIODOS_PROY.map((x) => <Chip key={x.k} active={periodo === x.k} onClick={() => setPeriodo(x.k)}>{tr(x.n)}</Chip>)}
+          </div>
+
+          {proys.length > 1 && (
+            <div style={{ ...card, padding: 15, marginBottom: 14 }}>
+              <div style={{ color: C.textLo, fontSize: 11, fontWeight: 800, letterSpacing: 0.6, textTransform: "uppercase", marginBottom: 4 }}>{tr("Todos los proyectos")}</div>
+              <div style={{ color: total.ben >= 0 ? C.good : C.bad, fontWeight: 900, fontSize: 26, letterSpacing: -0.5 }}>{total.ben >= 0 ? "+" : ""}{money(total.ben)}</div>
+              <div style={{ color: C.textLo, fontSize: 12, marginTop: 2 }}>{tri("{i} de ventas · {g} de gastos", { i: money(total.ing), g: money(total.gas) })}</div>
+            </div>
+          )}
+
+          <div style={{ display: "grid", gap: 10 }}>
+            {proys.map((p) => {
+              const c = cuentasProyecto(state, p.id, desde);
+              const vida = cuentasProyecto(state, p.id);
+              return (
+                <button key={p.id} onClick={() => setAbierto(p.id)} style={{ ...card, padding: 15, width: "100%", textAlign: "left", cursor: "pointer", border: "1px solid " + (vida.cubierto ? C.good : C.line) }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: 10 }}>
+                    <span style={{ fontSize: 22 }}>{p.emoji || "🛠️"}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ color: C.textHi, fontWeight: 800, fontSize: 15.5 }}>{p.nombre}</div>
+                      <div style={{ color: vida.cubierto ? C.good : C.textLo, fontSize: 11.5, fontWeight: 700 }}>
+                        {vida.cubierto ? tr("Gastos cubiertos ✓") : tri("Faltan {n} para cubrir gastos", { n: money(vida.falta) })}
+                      </div>
+                    </div>
+                    <ChevronRight size={18} color={C.textLo} />
+                  </div>
+                  <div style={{ height: 7, borderRadius: 999, background: C.rail, overflow: "hidden", marginBottom: 9 }}>
+                    <div style={{ width: vida.pct + "%", height: "100%", background: vida.cubierto ? C.good : C.yellow, borderRadius: 999, transition: "width .5s" }} />
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                    <span style={{ color: C.textLo, fontSize: 11 }}>{tr(PERIODOS_PROY.find((x) => x.k === periodo).n)}</span>
+                    <span style={{ color: c.beneficio >= 0 ? C.good : C.bad, fontWeight: 900, fontSize: 15 }}>{c.beneficio >= 0 ? "+" : ""}{money(c.beneficio)}</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          <button onClick={() => setSheet("nuevo")} style={{ ...miniBtn(C.ink3, C.textHi), width: "100%", marginTop: 12 }}>{tr("+ Nuevo proyecto")}</button>
+        </>
+      )}
+      <div style={{ height: 110 }} />
+      <Sheet open={sheet === "nuevo"} onClose={() => setSheet(null)} title={tr("Nuevo proyecto")}>
+        <ProyectoForm onSave={(d) => { dispatch({ type: "add", col: "proyectos", item: { id: uid(), ...d } }); setSheet(null); }} />
+      </Sheet>
+    </div>
+  );
+}
+
+const EMOJIS_PROY = ["🛠️", "🖨️", "👕", "🎨", "📦", "🍰", "💻", "🌱", "🎸", "📸"];
+function ProyectoForm({ onSave }) {
+  const [nombre, setNombre] = useState("");
+  const [emoji, setEmoji] = useState("🛠️");
+  return (
+    <div>
+      <Field label={tr("¿Qué montas?")}>
+        <input style={inputStyle} value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder={tr("Ej. Impresión 3D, camisetas…")} autoFocus />
+      </Field>
+      <Field label={tr("Icono")}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {EMOJIS_PROY.map((e) => <Chip key={e} active={emoji === e} onClick={() => setEmoji(e)}>{e}</Chip>)}
+        </div>
+      </Field>
+      <PrimaryBtn full onClick={() => nombre.trim() && onSave({ nombre: nombre.trim(), emoji })}>
+        <Check size={18} strokeWidth={3} /> {tr("Crear")}
+      </PrimaryBtn>
+    </div>
+  );
+}
+
 function ObjetosPanel({ state, dispatch, onIrAColecciones }) {
   const [busy, setBusy] = useState(false);
   const [prog, setProg] = useState(null);
