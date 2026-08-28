@@ -25,7 +25,7 @@ import {
    diccionario activo; si falta, devuelve el español (nunca se ve un hueco).
    Diccionarios: /i18n/{lang}.json — se descargan solo al elegir el idioma y
    quedan cacheados. El marco remonta con key={...lang} al cambiar. */
-const I18N_VER = "48"; // rompe la caché del SW al subir versión
+const I18N_VER = "49"; // rompe la caché del SW al subir versión
 const LANGS = [
   { k: "auto", label: "Automático" },
   { k: "es", label: "Español", flag: "🇪🇸", locale: "es-ES" },
@@ -3489,6 +3489,8 @@ function MisionDeHoy({ state, dispatch, toast, onVerBanco }) {
       </div>
       <button onClick={onVerBanco} style={{ background: "none", border: "none", color: C.yellow, fontWeight: 800, fontSize: 12, cursor: "pointer", padding: "8px 0 0" }}>{tr("Cambiar los de hoy")}</button>
 
+      <AvisoMision notif={state.profile.notif || {}} onChange={(p) => dispatch({ type: "profile", payload: { notif: { ...(state.profile.notif || {}), ...p } } })} />
+
       <Sheet open={!!viendo} onClose={() => setViendo(null)} title={tr("Tu prueba")}>
         {viendo && <VerPrueba prueba={viendo.prueba} nombre={viendo.nombre} />}
       </Sheet>
@@ -3597,6 +3599,38 @@ function VerPrueba({ prueba, nombre }) {
           <div style={{ color: C.yellow, fontWeight: 900, fontSize: 34 }}>{prueba.texto}</div>
         </div>
       )}
+    </div>
+  );
+}
+
+/* El interruptor del aviso, puesto donde se ve la misión y no escondido en
+   Ajustes: el sitio natural para decidir si quieres que te recuerden algo es
+   justo donde ves ese algo. */
+function AvisoMision({ notif, onChange }) {
+  const activo = !!(notif.enabled && notif.mision);
+  const hora = notif.misionHora || "20:00";
+  const encender = async () => {
+    if (activo) { onChange({ mision: false }); return; }
+    let permiso = true;
+    try { permiso = await notify.ensure(); } catch (e) { permiso = false; }
+    if (!permiso) return;
+    onChange({ enabled: true, mision: true, misionHora: hora });
+  };
+  return (
+    <div style={{ ...filaDentro(false), padding: "9px 11px", marginTop: 10, display: "flex", alignItems: "center", gap: 9 }}>
+      <span style={{ fontSize: 14 }}>🔔</span>
+      <button onClick={encender} style={{ flex: 1, minWidth: 0, background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", color: activo ? C.textHi : C.textLo, fontSize: 12, fontWeight: 700 }}>
+        {activo ? tr("Te aviso si te queda algo") : tr("Avísame si me queda algo")}
+      </button>
+      {activo && (
+        <input type="time" value={hora} onChange={(e) => onChange({ misionHora: e.target.value })}
+          style={{ ...inputStyle, width: "auto", marginBottom: 0, padding: "5px 8px", fontSize: 12.5, fontWeight: 800 }} />
+      )}
+      <span style={{ width: 34, height: 20, borderRadius: 999, flexShrink: 0, position: "relative", cursor: "pointer",
+        background: activo ? C.good : C.line, transition: "background .2s" }} onClick={encender}>
+        <span style={{ position: "absolute", top: 2, left: activo ? 16 : 2, width: 16, height: 16, borderRadius: 999,
+          background: "#fff", transition: "left .2s cubic-bezier(.34,1.56,.64,1)" }} />
+      </span>
     </div>
   );
 }
@@ -9869,6 +9903,7 @@ export default function BrosinOS() {
   const nagRef = useRef(0);
   const eventNagRef = useRef({});
   const sleepNagRef = useRef(null);
+  const misionNagRef = useRef(null);
   const [cloudUser, setCloudUser] = useState(null);
   const [langTick, setLangTick] = useState(0);
   /* idioma: resolver (auto = idioma del móvil) y cargar diccionario al vuelo */
@@ -10226,6 +10261,38 @@ export default function BrosinOS() {
     return () => { vivo = false; };
   }, [state.ready]);
 
+  /* Aviso de la misión del día. Reglas de cortesía: una vez al día, solo si te
+     queda algo por marcar, y nunca antes de la hora que elijas. Avisar de lo que
+     ya has hecho es ruido, y el ruido se acaba silenciando. */
+  useEffect(() => {
+    if (!state.ready) return;
+    const n = state.profile.notif || {};
+    if (!n.enabled || !n.mision) return;
+    let vivo = true;
+    const mirar = () => {
+      if (!vivo) return;
+      const hoy = todayISO();
+      if (misionNagRef.current === hoy) return;
+      const trozos = String(n.misionHora || "20:00").split(":");
+      const minutoObjetivo = (Number(trozos[0]) || 20) * 60 + (Number(trozos[1]) || 0);
+      const ahora = new Date();
+      if (ahora.getHours() * 60 + ahora.getMinutes() < minutoObjetivo) return;
+      const lista = habitosDeHoy(state, hoy);
+      const faltan = lista.filter((h) => !(h.done || []).includes(hoy));
+      misionNagRef.current = hoy;   // marcado pase lo que pase: una vez al día
+      if (!faltan.length) return;
+      try {
+        notify.fire(
+          faltan.length === 1 ? tr("Te queda uno de la misión") : tri("Te faltan {n} de la misión", { n: faltan.length }),
+          faltan.map((h) => h.name).join(", ") + " · " + tri("−{v} de vida si lo dejas así", { v: faltan.length * CASTIGO_POR_FALLO })
+        );
+      } catch (e) {}
+    };
+    mirar();
+    const iv = setInterval(mirar, 60000);
+    return () => { vivo = false; clearInterval(iv); };
+  }, [state.ready, state.profile.notif, state.habits, state.rpg]);
+
   /* Cierre del día. Si ayer quedaron hábitos de la misión sin marcar, hoy se
      paga. No hay temporizador: se ajusta cuentas la primera vez que abres la
      app, que es justo cuando te enteras de lo que ha pasado. */
@@ -10251,7 +10318,7 @@ export default function BrosinOS() {
       if (typeof navigator === "undefined" || typeof navigator.setAppBadge !== "function") return;
       const t = todayISO();
       const evPend = (state.events || []).filter((e) => sameDay(e.date, t) && !e.done).length;
-      const hbPend = (state.habits || []).filter((h) => !(h.done || []).includes(t)).length;
+      const hbPend = habitosDeHoy(state, t).filter((h) => !(h.done || []).includes(t)).length;
       const n = evPend + hbPend;
       if (n > 0) navigator.setAppBadge(n).catch(() => {});
       else if (typeof navigator.clearAppBadge === "function") navigator.clearAppBadge().catch(() => {});
