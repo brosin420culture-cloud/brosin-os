@@ -351,7 +351,8 @@ El fichero `test_v31.js` (78 comprobaciones, todas en verde) cubre: forma y requ
 | **v44** | **subida web** | **Cuatro pestañas en vez de cinco, Dinero en tres grupos, y los hábitos rehechos: banco por área, misión de cinco al día, pruebas y castigo por lo que dejas. 826 claves, I18N_VER = 44** |
 | **v45** | **subida web** | **El Juego con pestaña propia y radar de áreas, temporadas de 30/90 días, clan con clasificación por códigos, y "hoy" pasa a hora local. 885 claves, I18N_VER = 45** |
 | **v46** | **subida web** | **Las fotos de prueba salen a IndexedDB, visor de pruebas, 12 logros que pagan monedas y celebración al subir de nivel. 924 claves, I18N_VER = 46** |
-| **v47** | **subida web** | **Historial del juego con el motivo de cada movimiento, análisis por día de la semana y respuesta al tacto en toda la app. 947 claves, I18N_VER = 47** ← actual |
+| **v47** | **subida web** | **Historial del juego con el motivo de cada movimiento, análisis por día de la semana y respuesta al tacto en toda la app. 947 claves, I18N_VER = 47** |
+| **v48** | **subida web** | **Proyectos: gastos, ventas, punto de equilibrio y beneficio real por semana y mes. Banco de pruebas y limpieza de terminología. 1009 claves, I18N_VER = 48** ← actual |
 
 ---
 
@@ -716,3 +717,73 @@ error estaba en la prueba.
 **Traducciones**: 23 claves nuevas × 25 idiomas. 924 → 947.
 
 **Pendiente**: el aviso de la mision del dia a una hora elegida.
+
+---
+
+## v48 — Saber si un negocio te paga (28/08/2026)
+
+Kevin se compró una impresora 3D y empezó a vender. Lo intentó apuntar en
+Inversiones y no cuadraba, con razón: Inversiones es comprar algo y venderlo
+entero más tarde. Un negocio es otra cosa — gastos y ventas que se repiten.
+
+**Dinero › 🛠️ Proyectos.** Metes la inversión y los gastos, defines lo que
+vendes con su precio y su coste, y sabes cuánto te falta para cubrir gastos y
+cuánto ganas de verdad cada semana y cada mes.
+
+### LA REGLA QUE NO SE TOCA
+
+Un gasto o una venta de un proyecto **NO es una copia de un movimiento, ES un
+movimiento** (`state.tx`) con el campo `proj`. Solo existe una copia del dinero.
+Por eso el balance no se puede inflar, borrar el movimiento lo quita del
+proyecto, y editarlo lo cambia en los dos sitios.
+
+Si algún día te tienta guardar los gastos dentro del objeto proyecto: **no lo
+hagas**. Ese fue exactamente el fallo de las inversiones en la v36, cuando una
+venta de 3.600 € sumaba 3.600 en vez de los 800 de ganancia.
+
+### El punto de equilibrio
+
+- Los gastos se separan en `inversion` (la máquina, una vez) y `recurrente`
+  (material, luz). Importa: lo recurrente mueve el objetivo hacia arriba cada mes.
+- `faltanUnidades()` usa el **margen** (precio − coste), no el precio. El material
+  de esas unidades futuras también lo vas a pagar; con el precio saldría un
+  número optimista, que es lo último que quieres en una app de dinero.
+
+### Banco de pruebas — `pruebas.html`
+
+La app llevaba 48 versiones sin una sola prueba automática, y los dos fallos
+gordos de esta semana (fechas en UTC, fotos llenando el almacén) se encontraron
+de pura casualidad. Ya no.
+
+Abre **https://brosinos.com/pruebas** antes de publicar cualquier versión.
+Se descarga `fuente/BrosinOS.jsx`, lo compila en el navegador y ejecuta 29
+comprobaciones sobre el código de verdad. **Cada prueba nació de un fallo real.**
+
+El truco para probar un fichero que no exporta nada: como todo vive en el mismo
+ámbito del módulo, se le añade al final `window.__T = { ...las funciones... }`.
+Si añades una función pura que merezca prueba, métela en esa lista.
+
+**Si una prueba falla, no la borres: pregúntate por qué falla.** Y si escribes
+una nueva, valídala contra el código antes de fiarte — a mí una me falló y el
+error estaba en la prueba (usé fechas de enero y las lápidas se podan a los 120
+días). Una prueba mal escrita es peor que no tener ninguna.
+
+### Terminología unificada (deuda de la v39, saldada)
+
+Como las traducciones se hicieron en tandas, el mismo concepto tenía dos nombres
+dentro del mismo idioma: en francés "Mouvements" y "Opérations", en alemán
+"Bewegungen" y "Buchungen", en búlgaro "Движения" y "Транзакции"…
+
+Se revisaron los 25 y se corrigieron **21**. Criterio: **manda el término que se
+usa como nombre de pestaña**, porque es el que fija el vocabulario del usuario.
+Ya estaban bien en, et, lt y ga.
+
+Ojo con dos colisiones que se resolvieron y conviene no deshacer:
+- **"Inversión"** significa *Investment* en la sección financiera. Para el coste
+  único de un proyecto se creó la clave aparte **"Inversión inicial"**.
+- **"Vida"** es a la vez la pestaña personal y los puntos de vida del juego. Son
+  dos traducciones distintas a propósito en los 25 idiomas.
+
+**Traducciones**: 64 claves nuevas × 25 idiomas. 947 → 1009.
+
+**Pendiente**: el aviso de la misión del día a una hora elegida.
