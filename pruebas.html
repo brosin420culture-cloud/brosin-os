@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Brosin OS — pruebas</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; padding:24px 18px 60px; background:#0a0a0a; color:#eee;
+         font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif; }
+  .caja { max-width:760px; margin:0 auto; }
+  h1 { font-size:22px; margin:0 0 4px; letter-spacing:-.4px; }
+  .sub { color:#888; font-size:13px; margin-bottom:20px; line-height:1.5; }
+  .marcador { border-radius:16px; padding:16px 18px; margin-bottom:18px; font-weight:800;
+              font-size:17px; border:1px solid #222; background:#111; }
+  .ok { color:#3ddc84; } .ko { color:#ff5c5c; } .gris { color:#888; }
+  .grupo { color:#FFD400; font-size:11px; font-weight:800; letter-spacing:.8px;
+           text-transform:uppercase; margin:20px 0 8px; }
+  .fila { display:flex; gap:10px; align-items:flex-start; padding:9px 12px; border-radius:11px;
+          background:#131313; border:1px solid #1e1e1e; margin-bottom:6px; font-size:13.5px; }
+  .fila .n { flex:1; min-width:0; }
+  .porque { color:#777; font-size:12px; margin-top:3px; line-height:1.45; }
+  .detalle { color:#ff9d9d; font-size:12px; margin-top:4px; font-family:ui-monospace,monospace;
+             white-space:pre-wrap; word-break:break-word; }
+  code { background:#1a1a1a; padding:1px 5px; border-radius:5px; font-size:12px; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "react": "https://esm.sh/react@18.3.1",
+  "react-dom": "https://esm.sh/react-dom@18.3.1",
+  "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
+  "lucide-react": "https://esm.sh/lucide-react@0.456.0?external=react&deps=react@18.3.1",
+  "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2"
+}}
+</script>
+<script>
+  // La app toca window.storage al arrancar. Aquí no queremos tocar los datos
+  // reales de nadie, así que le damos un almacén de mentira que no persiste.
+  window.storage = { get: async () => null, set: async () => true };
+</script>
+</head>
+<body>
+<div class="caja">
+  <h1>Banco de pruebas</h1>
+  <div class="sub">
+    Carga el código de verdad (<code>fuente/BrosinOS.jsx</code>), lo compila aquí mismo y
+    comprueba las cuentas. Cada prueba nació de un fallo real: están para que no vuelvan.
+    <br>Pásalo antes de publicar una versión.
+  </div>
+  <div id="marcador" class="marcador gris">Compilando el código…</div>
+  <div id="salida"></div>
+</div>
+
+<script type="module">
+const $marcador = document.getElementById('marcador');
+const $salida = document.getElementById('salida');
+
+/* ---------- el arnés ---------- */
+const grupos = [];
+let grupoActual = null;
+const grupo = (n) => { grupoActual = { nombre: n, casos: [] }; grupos.push(grupoActual); };
+const prueba = (nombre, porque, fn) => grupoActual.casos.push({ nombre, porque, fn });
+
+const iguales = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+function esperar(real, esperado, nota) {
+  if (!iguales(real, esperado)) {
+    throw new Error((nota ? nota + '\n' : '') + 'esperaba: ' + JSON.stringify(esperado) + '\nsalió:    ' + JSON.stringify(real));
+  }
+}
+function esperarCerca(real, esperado, margen, nota) {
+  if (Math.abs(real - esperado) > (margen || 0.01)) {
+    throw new Error((nota ? nota + '\n' : '') + 'esperaba ~' + esperado + ' y salió ' + real);
+  }
+}
+
+/* ---------- compilar el código real ---------- */
+let T;
+try {
+  const ts = await import('https://esm.sh/typescript@5.6.3');
+  const src = await fetch('./fuente/BrosinOS.jsx?_=' + Date.now(), { cache: 'no-store' }).then(r => r.text());
+
+  // Las funciones no se exportan (la app es un solo fichero). Como todo vive en
+  // el mismo ámbito del módulo, basta con colgarlas de window al final.
+  const expuestas = ['reducer','EMPTY','todayISO','nowISO','uid','nivelDeXp','nivelGlobal','premioDeHabito',
+    'cuentasProyecto','faltanUnidades','margenDe','porDiaSemana','ingresosDesde','rpgEstado','rpgDe',
+    'cierreDelDia','habitosDeHoy','proponerMision','fusionarEstados','radiografia','logrosNuevos','LOGROS',
+    'desdeDe','CASTIGO_POR_FALLO','RPG_VIDA_MAX','RPG_META_REVIVIR','MISION_TAM'];
+  const jsx = src.replace('export default function BrosinOS', 'function BrosinOS')
+    + '\nwindow.__T = { ' + expuestas.join(', ') + ' };\n';
+  const js = ts.transpileModule(jsx, { compilerOptions: {
+    jsx: ts.JsxEmit.React, target: ts.ScriptTarget.ES2019, module: ts.ModuleKind.ESNext } }).outputText;
+
+  const url = URL.createObjectURL(new Blob([js], { type: 'text/javascript' }));
+  await import(url);
+  T = window.__T;
+  if (!T || !T.reducer) throw new Error('el código compiló pero no expuso las funciones');
+} catch (e) {
+  $marcador.className = 'marcador ko';
+  $marcador.textContent = 'No se pudo compilar: ' + e.message;
+  throw e;
+}
+
+const { reducer, EMPTY, todayISO, nowISO, uid, nivelDeXp, nivelGlobal, premioDeHabito,
+  cuentasProyecto, faltanUnidades, margenDe, porDiaSemana, ingresosDesde, rpgEstado, rpgDe,
+  cierreDelDia, habitosDeHoy, fusionarEstados, desdeDe, CASTIGO_POR_FALLO, RPG_VIDA_MAX,
+  RPG_META_REVIVIR } = T;
+
+const base = () => ({ ...EMPTY, ready: true });
+const menos = (dias) => { const d = new Date(); d.setDate(d.getDate() - dias); const p = (n) => String(n).padStart(2,'0');
+  return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate()); };
+
+/* ================= FECHAS ================= */
+grupo('Fechas');
+
+prueba('"Hoy" es tu hoy, no el de Greenwich',
+  'Con UTC, lo que marcabas entre las 00:00 y las 02:00 se apuntaba en el día de ayer. Pasó de verdad.',
+  () => {
+    const d = new Date(), p = (n) => String(n).padStart(2, '0');
+    esperar(todayISO(), d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()));
+  });
+
+prueba('El mes empieza el día 1 y la semana en lunes',
+  'De aquí salen los "cuánto gano este mes". Si el corte falla, el número miente.',
+  () => {
+    const mes = desdeDe('mes');
+    esperar(mes.slice(-2), '01', 'el mes debe empezar el día 1');
+    const sem = new Date(desdeDe('semana') + 'T12:00:00');
+    esperar(sem.getDay(), 1, 'la semana debe empezar en lunes');
+    esperar(desdeDe('todo'), null, '"desde el principio" no tiene fecha de corte');
+  });
+
+/* ================= DINERO / PROYECTOS ================= */
+grupo('Proyectos y dinero');
+
+const conProyecto = () => {
+  let s = base();
+  s = reducer(s, { type: 'add', col: 'proyectos', item: { id: 'p1', nombre: 'Impresión 3D' } });
+  s = reducer(s, { type: 'add', col: 'tx', item: { id: 'g1', type: 'gasto', amount: 400, date: todayISO(), proj: 'p1', gastoTipo: 'inversion' } });
+  s = reducer(s, { type: 'add', col: 'tx', item: { id: 'g2', type: 'gasto', amount: 60, date: todayISO(), proj: 'p1', gastoTipo: 'recurrente' } });
+  s = reducer(s, { type: 'add', col: 'tx', item: { id: 'v1', type: 'ingreso', amount: 60, date: todayISO(), proj: 'p1', unidades: 4 } });
+  return s;
+};
+
+prueba('Las cuentas del proyecto salen bien',
+  'Impresora 400 + filamento 60, vendidas 4 macetas a 15. Beneficio real −400.',
+  () => {
+    const c = cuentasProyecto(conProyecto(), 'p1');
+    esperar([c.inversion, c.recurrente, c.gastos, c.ingresado, c.beneficio, c.falta, c.unidades],
+            [400, 60, 460, 60, -400, 400, 4]);
+    esperar(c.cubierto, false);
+  });
+
+prueba('El dinero del proyecto cuenta UNA vez en el balance',
+  'El fallo de las inversiones en la v36 fue justo este: sumar dos veces.',
+  () => {
+    const s = conProyecto();
+    const balance = s.tx.reduce((a, x) => a + (x.type === 'ingreso' ? 1 : -1) * Number(x.amount || 0), 0);
+    esperar(balance, -400, 'un gasto o una venta del proyecto ES un movimiento, no una copia');
+  });
+
+prueba('Borrar el movimiento lo quita también del proyecto',
+  'Solo hay una copia del dinero. Si hubiera dos, se descuadrarían.',
+  () => {
+    let s = conProyecto();
+    s = reducer(s, { type: 'remove', col: 'tx', id: 'v1' });
+    const c = cuentasProyecto(s, 'p1');
+    esperar([c.ingresado, c.falta], [0, 460]);
+  });
+
+prueba('Cuántas unidades faltan para cubrir gastos',
+  'Faltan 400 € y cada maceta deja 12 € limpios: 34 macetas, no 33.',
+  () => {
+    const c = cuentasProyecto(conProyecto(), 'p1');
+    const maceta = { precio: 15, coste: 3 };
+    esperar(margenDe(maceta), 12);
+    esperar(faltanUnidades(c, maceta), 34);
+  });
+
+prueba('Con los gastos cubiertos ya no faltan unidades',
+  'Que no siga pidiendo vender cuando ya estás en verde.',
+  () => {
+    let s = conProyecto();
+    s = reducer(s, { type: 'add', col: 'tx', item: { id: 'v2', type: 'ingreso', amount: 500, date: todayISO(), proj: 'p1', unidades: 34 } });
+    const c = cuentasProyecto(s, 'p1');
+    esperar(c.cubierto, true);
+    esperar(c.beneficio, 100);
+    esperar(faltanUnidades(c, { precio: 15, coste: 3 }), 0);
+  });
+
+prueba('El margen nunca es negativo',
+  'Si te equivocas y pones que cuesta más de lo que vendes, no debe romper la cuenta.',
+  () => esperar(margenDe({ precio: 5, coste: 9 }), 0));
+
+/* ================= EL JUEGO ================= */
+grupo('El juego');
+
+prueba('Los niveles cuestan cada vez más',
+  'Cada nivel pide 100 XP más que el anterior: 100, 200, 300…',
+  () => {
+    esperar(nivelDeXp(0).nivel, 1);
+    esperar(nivelDeXp(99).nivel, 1);
+    esperar(nivelDeXp(100).nivel, 2);
+    esperar(nivelDeXp(300).nivel, 3);
+    esperar(nivelDeXp(600).nivel, 4);
+  });
+
+prueba('Lo que cuesta más, paga más',
+  'Fácil ×1, normal ×2, duro ×3.',
+  () => {
+    esperar(premioDeHabito({ dif: 'facil' }).xp, 10);
+    esperar(premioDeHabito({ dif: 'normal' }).xp, 20);
+    esperar(premioDeHabito({ dif: 'duro' }).xp, 30);
+    esperar(premioDeHabito({}).xp, 20, 'sin dificultad debe portarse como normal');
+  });
+
+prueba('Marcar y desmarcar te deja como estabas',
+  'Bug de la v43: al máximo de vida, marcar curaba 0 pero desmarcar restaba 30. Te robaba vida.',
+  () => {
+    let s = base();
+    s = reducer(s, { type: 'rpg', payload: { hp: RPG_VIDA_MAX, coins: 0, xp: {} } });
+    const antes = rpgDe(s);
+    // marcar: pide +30 de cura pero ya está al tope, así que aplica 0
+    s = reducer(s, { type: 'premio', payload: { area: 'salud', xp: 30, coins: 15, hp: 30, banco: { d: '2026-01-01', k: 'h1', quitar: false } } });
+    const dado = rpgDe(s).curas.h.h1;
+    esperar(dado, 0, 'estando al tope, la cura real aplicada es 0');
+    // desmarcar: debe devolver exactamente lo que dio, o sea nada
+    s = reducer(s, { type: 'premio', payload: { area: 'salud', xp: -30, coins: -15, hp: -dado, banco: { d: '2026-01-01', k: 'h1', quitar: true } } });
+    const despues = rpgDe(s);
+    esperar([despues.hp, despues.coins, despues.xp.salud || 0],
+            [antes.hp, antes.coins || 0, 0]);
+  });
+
+prueba('Con la vida a medias, marcar y desmarcar también cuadra',
+  'El mismo caso pero sin tope de por medio.',
+  () => {
+    let s = base();
+    s = reducer(s, { type: 'rpg', payload: { hp: 500, coins: 0, xp: {} } });
+    s = reducer(s, { type: 'premio', payload: { area: 'salud', xp: 20, coins: 10, hp: 20, banco: { d: '2026-01-01', k: 'h1', quitar: false } } });
+    esperar(rpgDe(s).hp, 520);
+    const dado = rpgDe(s).curas.h.h1;
+    s = reducer(s, { type: 'premio', payload: { area: 'salud', xp: -20, coins: -10, hp: -dado, banco: { d: '2026-01-01', k: 'h1', quitar: true } } });
+    esperar([rpgDe(s).hp, rpgDe(s).coins], [500, 0]);
+  });
+
+prueba('Varios premios seguidos no se pisan',
+  'Van por incrementos, no por valores absolutos. Si no, marcar tres hábitos solo contaría el último.',
+  () => {
+    let s = base();
+    s = reducer(s, { type: 'rpg', payload: { hp: 100, coins: 0, xp: {} } });
+    for (let i = 0; i < 3; i++) s = reducer(s, { type: 'premio', payload: { area: 'salud', xp: 20, coins: 10, hp: 20 } });
+    esperar([rpgDe(s).hp, rpgDe(s).coins, rpgDe(s).xp.salud], [160, 30, 60]);
+  });
+
+prueba('La vida nunca pasa del tope ni baja de cero',
+  'Un mal hábito carísimo no debe dejar la vida en negativo.',
+  () => {
+    let s = base();
+    s = reducer(s, { type: 'rpg', payload: { hp: 50 } });
+    s = reducer(s, { type: 'premio', payload: { hp: -9999 } });
+    esperar(rpgDe(s).hp, 0);
+    s = reducer(s, { type: 'premio', payload: { hp: 99999 } });
+    esperar(rpgDe(s).hp, RPG_VIDA_MAX);
+  });
+
+prueba('Las monedas nunca se quedan en negativo',
+  'Comprar algo caro no debe dejarte debiendo monedas.',
+  () => {
+    let s = base();
+    s = reducer(s, { type: 'rpg', payload: { coins: 10 } });
+    s = reducer(s, { type: 'premio', payload: { coins: -500 } });
+    esperar(rpgDe(s).coins, 0);
+  });
+
+prueba('Todo movimiento con motivo queda en el historial',
+  'Si algo da o quita vida sin pasar por aquí, el historial miente.',
+  () => {
+    let s = base();
+    s = reducer(s, { type: 'premio', payload: { hp: -20, nota: { tipo: 'malo', texto: 'Fumar' } } });
+    esperar(s.registro.length, 1);
+    esperar([s.registro[0].tipo, s.registro[0].texto, s.registro[0].hp], ['malo', 'Fumar', -20]);
+    // sin nota no se apunta nada: los ajustes internos no ensucian el historial
+    s = reducer(s, { type: 'premio', payload: { hp: -10 } });
+    esperar(s.registro.length, 1);
+  });
+
+/* ================= MISIÓN Y CASTIGO ================= */
+grupo('La misión del día');
+
+prueba('Solo los cinco del día te quitan vida',
+  'El resto del banco suma si lo haces, pero no castiga. Esa es la promesa.',
+  () => {
+    const ayer = menos(1);
+    let s = base();
+    s.habits = [
+      { id: 'h1', name: 'Rezar', done: [], area: 'salud' },
+      { id: 'h2', name: 'Leer', done: [], area: 'salud' },
+      { id: 'h3', name: 'Fuera de la misión', done: [], area: 'salud' },
+    ];
+    s.rpg = { ...rpgDe(s), mision: { d: ayer, ids: ['h1', 'h2'], cerrado: false } };
+    const c = cierreDelDia(s, todayISO());
+    esperar(c.fallados.length, 2, 'h3 no estaba en la misión, no debe contar');
+    esperar(c.coste, 2 * CASTIGO_POR_FALLO);
+  });
+
+prueba('Lo que sí hiciste no se cobra',
+  'Cobrar un hábito cumplido sería el peor bug posible de este sistema.',
+  () => {
+    const ayer = menos(1);
+    let s = base();
+    s.habits = [
+      { id: 'h1', name: 'Rezar', done: [ayer], area: 'salud' },
+      { id: 'h2', name: 'Leer', done: [], area: 'salud' },
+    ];
+    s.rpg = { ...rpgDe(s), mision: { d: ayer, ids: ['h1', 'h2'], cerrado: false } };
+    esperar(cierreDelDia(s, todayISO()).coste, CASTIGO_POR_FALLO);
+  });
+
+prueba('Una misión ya cerrada no se cobra dos veces',
+  'Abrir la app dos veces el mismo día no puede costarte vida dos veces.',
+  () => {
+    const ayer = menos(1);
+    let s = base();
+    s.habits = [{ id: 'h1', name: 'Rezar', done: [], area: 'salud' }];
+    s.rpg = { ...rpgDe(s), mision: { d: ayer, ids: ['h1'], cerrado: true } };
+    esperar(cierreDelDia(s, todayISO()), null);
+  });
+
+prueba('La misión de hoy no se cobra todavía',
+  'El día no ha acabado. Cobrarlo sería injusto y desesperante.',
+  () => {
+    let s = base();
+    s.habits = [{ id: 'h1', name: 'Rezar', done: [], area: 'salud' }];
+    s.rpg = { ...rpgDe(s), mision: { d: todayISO(), ids: ['h1'], cerrado: false } };
+    esperar(cierreDelDia(s, todayISO()), null);
+  });
+
+/* ================= MUERTE Y VUELTA ================= */
+grupo('Muerte y resurrección');
+
+prueba('Solo cuenta el dinero ganado DESPUÉS de caer',
+  'Si contara ingresos viejos, revivirías sin hacer nada.',
+  () => {
+    const hace3 = new Date(Date.now() - 3 * 86400000).toISOString();
+    const hace1 = new Date(Date.now() - 1 * 86400000).toISOString();
+    const muerte = new Date(Date.now() - 2 * 86400000).toISOString();
+    const s = { ...base(), tx: [
+      { id: 'a', type: 'ingreso', amount: 500, createdAt: hace3 },
+      { id: 'b', type: 'ingreso', amount: 120, createdAt: hace1 },
+      { id: 'c', type: 'gasto',   amount: 900, createdAt: hace1 },
+    ] };
+    esperar(ingresosDesde(s, muerte), 120, 'los 500 son de antes de morir y los gastos no cuentan');
+  });
+
+prueba('Con el objetivo cumplido, se puede volver',
+  'Ganar 100 € de verdad y que la app no lo reconozca sería lo más frustrante del juego.',
+  () => {
+    const muerte = new Date(Date.now() - 3600000).toISOString();
+    const s = { ...base(),
+      rpg: { ...rpgDe(base()), hp: 0, muertoDesde: muerte },
+      tx: [{ id: 'a', type: 'ingreso', amount: RPG_META_REVIVIR, createdAt: new Date().toISOString() }] };
+    const r = rpgEstado(s);
+    esperar([r.muerto, r.puedeRevivir, r.falta], [true, true, 0]);
+  });
+
+prueba('Sin llegar al objetivo, no se revive',
+  '',
+  () => {
+    const muerte = new Date(Date.now() - 3600000).toISOString();
+    const s = { ...base(),
+      rpg: { ...rpgDe(base()), hp: 0, muertoDesde: muerte },
+      tx: [{ id: 'a', type: 'ingreso', amount: 30, createdAt: new Date().toISOString() }] };
+    const r = rpgEstado(s);
+    esperar([r.puedeRevivir, r.falta], [false, RPG_META_REVIVIR - 30]);
+  });
+
+/* ================= ANÁLISIS ================= */
+grupo('Tu semana');
+
+prueba('Un día sin datos no cuenta como tu peor día',
+  'Si no, el domingo que aún no ha llegado saldría como el peor y sería mentira.',
+  () => {
+    const s = base();
+    const lunes = (() => { const d = new Date(); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); d.setHours(12,0,0,0); return d; })();
+    const mismo = (n) => { const d = new Date(lunes); d.setDate(d.getDate() + n); return d.toISOString(); };
+    s.registro = [
+      { id: '1', at: mismo(0), dia: 'x', tipo: 'habito' },
+      { id: '2', at: mismo(0), dia: 'x', tipo: 'habito' },
+      { id: '3', at: mismo(1), dia: 'y', tipo: 'malo' },
+    ];
+    const r = porDiaSemana(s);
+    esperar(r.filas.filter((f) => f.tieneDatos).length, 2, 'solo lunes y martes tienen datos');
+    esperar(r.mejor.d, 'L');
+    esperar(r.peor.d, 'M', 'el peor debe ser un día CON datos, no un día vacío');
+  });
+
+prueba('Sin datos suficientes no se inventa nada',
+  'Con un solo día no hay "mejor" ni "peor" que valga.',
+  () => {
+    const s = base();
+    s.registro = [{ id: '1', at: new Date().toISOString(), dia: 'x', tipo: 'habito' }];
+    esperar(porDiaSemana(s).hayDatos, false);
+  });
+
+/* ================= SINCRONIZACIÓN ================= */
+grupo('Sincronización entre móviles');
+
+const hace = (d) => new Date(Date.now() - d * 86400000).toISOString();
+
+prueba('Lo que borras no revive desde el otro móvil',
+  'Kevin lo sufrió: borraba cosas y volvían a aparecer. Se arregló en la v38 con lápidas.',
+  () => {
+    const local = { ...base(), savedAt: hace(0), tx: [], _tomb: { tx: { t1: hace(1) } } };
+    const nube  = { ...base(), savedAt: hace(2), tx: [{ id: 't1', amount: 10, type: 'gasto', createdAt: hace(3) }] };
+    esperar(fusionarEstados(local, nube).tx.length, 0, 'el borrado es posterior al item: debe seguir borrado');
+  });
+
+prueba('Si lo editaste DESPUÉS de borrarlo, gana la edición',
+  'Borrar en un móvil no puede matar un cambio que hiciste luego en el otro.',
+  () => {
+    const local = { ...base(), savedAt: hace(0), tx: [], _tomb: { tx: { t1: hace(3) } } };
+    const nube  = { ...base(), savedAt: hace(1), tx: [{ id: 't1', amount: 10, type: 'gasto', createdAt: hace(5), updatedAt: hace(1) }] };
+    esperar(fusionarEstados(local, nube).tx.length, 1);
+  });
+
+prueba('Una lápida de más de 120 días ya no frena nada',
+  'Es a propósito: se podan para no acumular basura. Si esta prueba falla es que alguien quitó la poda — no es un bug, está pensado.',
+  () => {
+    const local = { ...base(), savedAt: hace(0), tx: [], _tomb: { tx: { t1: hace(200) } } };
+    const nube  = { ...base(), savedAt: hace(1), tx: [{ id: 't1', amount: 10, type: 'gasto', createdAt: hace(201) }] };
+    esperar(fusionarEstados(local, nube).tx.length, 1);
+  });
+
+prueba('Lo que hiciste en el otro móvil no se pierde',
+  'La v34 elegía la copia entera más nueva y se comía lo del otro lado.',
+  () => {
+    const local = { ...base(), savedAt: hace(0), tx: [{ id: 'a', amount: 1, type: 'gasto', createdAt: hace(0) }] };
+    const nube  = { ...base(), savedAt: hace(1), tx: [{ id: 'b', amount: 2, type: 'gasto', createdAt: hace(1) }] };
+    esperar(fusionarEstados(local, nube).tx.map((x) => x.id).sort(), ['a', 'b'], 'deben sobrevivir los dos');
+  });
+
+/* ================= EJECUTAR ================= */
+let ok = 0, ko = 0;
+for (const g of grupos) {
+  const h = document.createElement('div');
+  h.className = 'grupo'; h.textContent = g.nombre;
+  $salida.appendChild(h);
+  for (const c of g.casos) {
+    let fallo = null;
+    try { c.fn(); } catch (e) { fallo = e.message || String(e); }
+    if (fallo) ko++; else ok++;
+    const f = document.createElement('div');
+    f.className = 'fila';
+    f.innerHTML = '<div class="' + (fallo ? 'ko' : 'ok') + '">' + (fallo ? '✕' : '✓') + '</div>'
+      + '<div class="n"><div>' + c.nombre + '</div>'
+      + (c.porque ? '<div class="porque">' + c.porque + '</div>' : '')
+      + (fallo ? '<div class="detalle">' + fallo.replace(/</g, '&lt;') + '</div>' : '')
+      + '</div>';
+    $salida.appendChild(f);
+  }
+}
+$marcador.className = 'marcador ' + (ko ? 'ko' : 'ok');
+$marcador.textContent = ko
+  ? ko + ' de ' + (ok + ko) + ' fallan — NO publiques hasta arreglarlo'
+  : 'Las ' + ok + ' pruebas pasan. Puedes publicar.';
+</script>
+</body>
+</html>
