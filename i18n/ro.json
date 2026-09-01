@@ -1007,5 +1007,10 @@
   "¿A cuánto lo vendes?": "Cu cât îl vinzi?",
   "¿Cuánto material te lleva?": "Cât material consumă?",
   "Lo que te cuesta hacer una: filamento, tornillos, embalaje. Si no lo sabes, déjalo en blanco.": "Cât te costă să faci una: filament, șuruburi, ambalaj. Dacă nu știi, lasă gol.",
-  "GANAS POR CADA UNA": "CÂȘTIGI LA FIECARE"
+  "GANAS POR CADA UNA": "CÂȘTIGI LA FIECARE",
+  "Avísame si me queda algo": "Anunță-mă dacă îmi mai rămâne ceva",
+  "Te aviso si te queda algo": "Te anunț dacă îți mai rămâne ceva",
+  "Te queda uno de la misión": "Ți-a mai rămas unul din misiune",
+  "Te faltan {n} de la misión": "Ți-au mai rămas {n} din misiune",
+  "−{v} de vida si lo dejas así": "−{v} viață dacă lași așa"
 }

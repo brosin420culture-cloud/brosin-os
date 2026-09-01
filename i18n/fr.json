@@ -1007,5 +1007,10 @@
   "¿A cuánto lo vendes?": "Tu le vends combien ?",
   "¿Cuánto material te lleva?": "Ça te prend combien de matière ?",
   "Lo que te cuesta hacer una: filamento, tornillos, embalaje. Si no lo sabes, déjalo en blanco.": "Ce que ça te coûte d'en fabriquer un : filament, vis, emballage. Si tu ne sais pas, laisse vide.",
-  "GANAS POR CADA UNA": "TU GAGNES PAR UNITÉ"
+  "GANAS POR CADA UNA": "TU GAGNES PAR UNITÉ",
+  "Avísame si me queda algo": "Préviens-moi s'il m'en reste",
+  "Te aviso si te queda algo": "Je te préviens s'il t'en reste",
+  "Te queda uno de la misión": "Il t'en reste un dans la mission",
+  "Te faltan {n} de la misión": "Il t'en reste {n} dans la mission",
+  "−{v} de vida si lo dejas así": "−{v} PV si tu laisses ça comme ça"
 }

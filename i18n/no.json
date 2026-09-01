@@ -1007,5 +1007,10 @@
   "¿A cuánto lo vendes?": "Hva selger du den for?",
   "¿Cuánto material te lleva?": "Hvor mye materiale går med?",
   "Lo que te cuesta hacer una: filamento, tornillos, embalaje. Si no lo sabes, déjalo en blanco.": "Hva det koster deg å lage én: filament, skruer, emballasje. Vet du det ikke, la det stå tomt.",
-  "GANAS POR CADA UNA": "DU TJENER PER STK."
+  "GANAS POR CADA UNA": "DU TJENER PER STK.",
+  "Avísame si me queda algo": "Minn meg på det hvis noe står igjen",
+  "Te aviso si te queda algo": "Jeg minner deg på det hvis noe står igjen",
+  "Te queda uno de la misión": "Én igjen i oppdraget ditt",
+  "Te faltan {n} de la misión": "{n} igjen i oppdraget ditt",
+  "−{v} de vida si lo dejas así": "−{v} HP hvis du lar det stå"
 }

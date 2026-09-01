@@ -1007,5 +1007,10 @@
   "¿A cuánto lo vendes?": "Za kolik to prodáváš?",
   "¿Cuánto material te lleva?": "Kolik materiálu to spotřebuje?",
   "Lo que te cuesta hacer una: filamento, tornillos, embalaje. Si no lo sabes, déjalo en blanco.": "Kolik tě stojí vyrobit jeden kus: filament, šroubky, obal. Když to nevíš, nech prázdné.",
-  "GANAS POR CADA UNA": "VYDĚLÁŠ NA KAŽDÉM"
+  "GANAS POR CADA UNA": "VYDĚLÁŠ NA KAŽDÉM",
+  "Avísame si me queda algo": "Připomeň mi, jestli mi něco zbývá",
+  "Te aviso si te queda algo": "Připomenu ti, jestli ti něco zbývá",
+  "Te queda uno de la misión": "Zbývá ti jeden z mise",
+  "Te faltan {n} de la misión": "Zbývají ti {n} z mise",
+  "−{v} de vida si lo dejas así": "−{v} života, jestli to tak necháš"
 }

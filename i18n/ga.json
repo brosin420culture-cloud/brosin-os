@@ -1007,5 +1007,10 @@
   "¿A cuánto lo vendes?": "Ar cé mhéad a dhíolann tú é?",
   "¿Cuánto material te lleva?": "Cé mhéad ábhair a theastaíonn uaidh?",
   "Lo que te cuesta hacer una: filamento, tornillos, embalaje. Si no lo sabes, déjalo en blanco.": "An méid a chosnaíonn sé ort ceann amháin a dhéanamh: filiméad, scriúnna, pacáistiú. Mura bhfuil a fhios agat, fág bán é.",
-  "GANAS POR CADA UNA": "SAOTHRAÍONN TÚ IN AGHAIDH AN CHINN"
+  "GANAS POR CADA UNA": "SAOTHRAÍONN TÚ IN AGHAIDH AN CHINN",
+  "Avísame si me queda algo": "Cuir i gcuimhne dom má fhanann rud ar bith",
+  "Te aviso si te queda algo": "Cuirfidh mé i gcuimhne duit má fhanann rud ar bith",
+  "Te queda uno de la misión": "Tá ceann amháin fágtha i do mhisean",
+  "Te faltan {n} de la misión": "Tá {n} fágtha i do mhisean",
+  "−{v} de vida si lo dejas así": "−{v} beatha má fhágann tú mar sin é"
 }

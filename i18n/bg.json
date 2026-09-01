@@ -1007,5 +1007,10 @@
   "¿A cuánto lo vendes?": "На каква цена го продаваш?",
   "¿Cuánto material te lleva?": "Колко материал отива?",
   "Lo que te cuesta hacer una: filamento, tornillos, embalaje. Si no lo sabes, déjalo en blanco.": "Колко ти струва да направиш един: филамент, винтове, опаковка. Ако не знаеш, остави празно.",
-  "GANAS POR CADA UNA": "ПЕЧЕЛИШ ОТ ВСЕКИ"
+  "GANAS POR CADA UNA": "ПЕЧЕЛИШ ОТ ВСЕКИ",
+  "Avísame si me queda algo": "Напомни ми, ако ми остане нещо",
+  "Te aviso si te queda algo": "Ще ти напомня, ако ти остане нещо",
+  "Te queda uno de la misión": "Остава ти едно от мисията",
+  "Te faltan {n} de la misión": "Остават ти {n} от мисията",
+  "−{v} de vida si lo dejas así": "−{v} живот, ако го оставиш така"
 }

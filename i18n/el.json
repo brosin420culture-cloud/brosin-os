@@ -1007,5 +1007,10 @@
   "¿A cuánto lo vendes?": "Πόσο το πουλάς;",
   "¿Cuánto material te lleva?": "Πόσο υλικό χρειάζεται;",
   "Lo que te cuesta hacer una: filamento, tornillos, embalaje. Si no lo sabes, déjalo en blanco.": "Πόσο σου κοστίζει να φτιάξεις ένα: νήμα, βίδες, συσκευασία. Αν δεν ξέρεις, άφησέ το κενό.",
-  "GANAS POR CADA UNA": "ΚΕΡΔΙΖΕΙΣ ΑΝΑ ΤΕΜΑΧΙΟ"
+  "GANAS POR CADA UNA": "ΚΕΡΔΙΖΕΙΣ ΑΝΑ ΤΕΜΑΧΙΟ",
+  "Avísame si me queda algo": "Θύμισέ μου αν μου μείνει κάτι",
+  "Te aviso si te queda algo": "Θα σου θυμίσω αν σου μείνει κάτι",
+  "Te queda uno de la misión": "Σου μένει ένα από την αποστολή",
+  "Te faltan {n} de la misión": "Σου μένουν {n} από την αποστολή",
+  "−{v} de vida si lo dejas así": "−{v} ζωής αν το αφήσεις έτσι"
 }

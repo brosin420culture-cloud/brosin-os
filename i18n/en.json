@@ -1007,5 +1007,10 @@
   "¿A cuánto lo vendes?": "What do you sell it for?",
   "¿Cuánto material te lleva?": "How much material does it take?",
   "Lo que te cuesta hacer una: filamento, tornillos, embalaje. Si no lo sabes, déjalo en blanco.": "What it costs you to make one: filament, screws, packaging. If you don't know, leave it blank.",
-  "GANAS POR CADA UNA": "YOU MAKE PER UNIT"
+  "GANAS POR CADA UNA": "YOU MAKE PER UNIT",
+  "Avísame si me queda algo": "Remind me if I've got any left",
+  "Te aviso si te queda algo": "I'll remind you if any are left",
+  "Te queda uno de la misión": "One left in your mission",
+  "Te faltan {n} de la misión": "{n} left in your mission",
+  "−{v} de vida si lo dejas así": "−{v} HP if you leave it like that"
 }

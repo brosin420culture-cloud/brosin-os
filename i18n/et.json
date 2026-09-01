@@ -1007,5 +1007,10 @@
   "¿A cuánto lo vendes?": "Mis hinnaga sa seda müüd?",
   "¿Cuánto material te lleva?": "Kui palju materjali kulub?",
   "Lo que te cuesta hacer una: filamento, tornillos, embalaje. Si no lo sabes, déjalo en blanco.": "Kui palju maksab sul ühe tegemine: filament, kruvid, pakend. Kui sa ei tea, jäta tühjaks.",
-  "GANAS POR CADA UNA": "TEENID IGA TÜKI PEALT"
+  "GANAS POR CADA UNA": "TEENID IGA TÜKI PEALT",
+  "Avísame si me queda algo": "Tuleta mulle meelde, kui midagi jääb",
+  "Te aviso si te queda algo": "Tuletan sulle meelde, kui midagi jääb",
+  "Te queda uno de la misión": "Üks on missioonist jäänud",
+  "Te faltan {n} de la misión": "{n} on missioonist jäänud",
+  "−{v} de vida si lo dejas así": "−{v} elu, kui nii jätad"
 }

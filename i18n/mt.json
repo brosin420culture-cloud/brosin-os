@@ -1007,5 +1007,10 @@
   "¿A cuánto lo vendes?": "Bi kemm tbigħu?",
   "¿Cuánto material te lleva?": "Kemm materjal jieħu?",
   "Lo que te cuesta hacer una: filamento, tornillos, embalaje. Si no lo sabes, déjalo en blanco.": "Kemm jiswielek biex tagħmel waħda: filament, viti, ippakkjar. Jekk ma tafx, ħallih vojt.",
-  "GANAS POR CADA UNA": "TAQLA' MA' KULL WAĦDA"
+  "GANAS POR CADA UNA": "TAQLA' MA' KULL WAĦDA",
+  "Avísame si me queda algo": "Fakkarni jekk jibqagħli xi ħaġa",
+  "Te aviso si te queda algo": "Infakkrek jekk jibqagħlek xi ħaġa",
+  "Te queda uno de la misión": "Fadallek wieħed mill-missjoni",
+  "Te faltan {n} de la misión": "Fadallek {n} mill-missjoni",
+  "−{v} de vida si lo dejas así": "−{v} ħajja jekk tħallih hekk"
 }

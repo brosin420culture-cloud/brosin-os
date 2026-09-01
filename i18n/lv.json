@@ -1007,5 +1007,10 @@
   "¿A cuánto lo vendes?": "Par cik tu to pārdod?",
   "¿Cuánto material te lleva?": "Cik daudz materiāla aiziet?",
   "Lo que te cuesta hacer una: filamento, tornillos, embalaje. Si no lo sabes, déjalo en blanco.": "Cik tev maksā izgatavot vienu: filaments, skrūves, iepakojums. Ja nezini, atstāj tukšu.",
-  "GANAS POR CADA UNA": "NOPELNI PAR KATRU"
+  "GANAS POR CADA UNA": "NOPELNI PAR KATRU",
+  "Avísame si me queda algo": "Atgādini man, ja kaut kas paliek",
+  "Te aviso si te queda algo": "Atgādināšu tev, ja kaut kas paliek",
+  "Te queda uno de la misión": "Viens palicis no misijas",
+  "Te faltan {n} de la misión": "Palikuši {n} no misijas",
+  "−{v} de vida si lo dejas así": "−{v} dzīvības, ja tā atstāsi"
 }

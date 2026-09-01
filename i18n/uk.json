@@ -1007,5 +1007,10 @@
   "¿A cuánto lo vendes?": "За скільки ти це продаєш?",
   "¿Cuánto material te lleva?": "Скільки матеріалу йде?",
   "Lo que te cuesta hacer una: filamento, tornillos, embalaje. Si no lo sabes, déjalo en blanco.": "Скільки тобі коштує зробити одну: філамент, гвинтики, пакування. Якщо не знаєш, залиш порожнім.",
-  "GANAS POR CADA UNA": "ЗАРОБЛЯЄШ З КОЖНОЇ"
+  "GANAS POR CADA UNA": "ЗАРОБЛЯЄШ З КОЖНОЇ",
+  "Avísame si me queda algo": "Нагадай мені, якщо щось лишиться",
+  "Te aviso si te queda algo": "Нагадаю тобі, якщо щось лишиться",
+  "Te queda uno de la misión": "Лишився один із місії",
+  "Te faltan {n} de la misión": "Лишилося {n} із місії",
+  "−{v} de vida si lo dejas así": "−{v} життя, якщо так залишиш"
 }

@@ -1007,5 +1007,10 @@
   "¿A cuánto lo vendes?": "Po koliko to prodajaš?",
   "¿Cuánto material te lleva?": "Koliko materiala porabiš?",
   "Lo que te cuesta hacer una: filamento, tornillos, embalaje. Si no lo sabes, déjalo en blanco.": "Koliko te stane izdelava enega: filament, vijaki, embalaža. Če ne veš, pusti prazno.",
-  "GANAS POR CADA UNA": "ZASLUŽIŠ NA KOS"
+  "GANAS POR CADA UNA": "ZASLUŽIŠ NA KOS",
+  "Avísame si me queda algo": "Opozori me, če mi kaj ostane",
+  "Te aviso si te queda algo": "Opozorim te, če ti kaj ostane",
+  "Te queda uno de la misión": "Ostal ti je eden iz misije",
+  "Te faltan {n} de la misión": "Ostalo ti je {n} iz misije",
+  "−{v} de vida si lo dejas así": "−{v} življenja, če pustiš tako"
 }

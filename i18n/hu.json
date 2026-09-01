@@ -1007,5 +1007,10 @@
   "¿A cuánto lo vendes?": "Mennyiért adod?",
   "¿Cuánto material te lleva?": "Mennyi anyag megy rá?",
   "Lo que te cuesta hacer una: filamento, tornillos, embalaje. Si no lo sabes, déjalo en blanco.": "Amennyibe egy darab elkészítése kerül: filament, csavarok, csomagolás. Ha nem tudod, hagyd üresen.",
-  "GANAS POR CADA UNA": "DARABONKÉNT KERESEL"
+  "GANAS POR CADA UNA": "DARABONKÉNT KERESEL",
+  "Avísame si me queda algo": "Szólj, ha maradt valami",
+  "Te aviso si te queda algo": "Szólok, ha maradt valami",
+  "Te queda uno de la misión": "Egy maradt a küldetésedből",
+  "Te faltan {n} de la misión": "{n} maradt a küldetésedből",
+  "−{v} de vida si lo dejas así": "−{v} élet, ha így hagyod"
 }

@@ -1007,5 +1007,10 @@
   "¿A cuánto lo vendes?": "Für wie viel verkaufst du es?",
   "¿Cuánto material te lleva?": "Wie viel Material brauchst du dafür?",
   "Lo que te cuesta hacer una: filamento, tornillos, embalaje. Si no lo sabes, déjalo en blanco.": "Was dich ein Stück kostet: Filament, Schrauben, Verpackung. Wenn du es nicht weißt, lass es leer.",
-  "GANAS POR CADA UNA": "DU VERDIENST PRO STÜCK"
+  "GANAS POR CADA UNA": "DU VERDIENST PRO STÜCK",
+  "Avísame si me queda algo": "Sag mir Bescheid, wenn was offen ist",
+  "Te aviso si te queda algo": "Ich sage dir Bescheid, wenn was offen ist",
+  "Te queda uno de la misión": "Noch einer in deiner Mission",
+  "Te faltan {n} de la misión": "Noch {n} in deiner Mission",
+  "−{v} de vida si lo dejas así": "−{v} LP, wenn du es so lässt"
 }

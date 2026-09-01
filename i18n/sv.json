@@ -1007,5 +1007,10 @@
   "¿A cuánto lo vendes?": "Vad säljer du den för?",
   "¿Cuánto material te lleva?": "Hur mycket material går åt?",
   "Lo que te cuesta hacer una: filamento, tornillos, embalaje. Si no lo sabes, déjalo en blanco.": "Vad det kostar dig att göra en: filament, skruvar, förpackning. Vet du inte, lämna tomt.",
-  "GANAS POR CADA UNA": "DU TJÄNAR PER STYCK"
+  "GANAS POR CADA UNA": "DU TJÄNAR PER STYCK",
+  "Avísame si me queda algo": "Påminn mig om något är kvar",
+  "Te aviso si te queda algo": "Jag påminner dig om något är kvar",
+  "Te queda uno de la misión": "Ett kvar i ditt uppdrag",
+  "Te faltan {n} de la misión": "{n} kvar i ditt uppdrag",
+  "−{v} de vida si lo dejas así": "−{v} HP om du lämnar det så"
 }

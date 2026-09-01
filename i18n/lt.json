@@ -1007,5 +1007,10 @@
   "¿A cuánto lo vendes?": "Už kiek jį parduodi?",
   "¿Cuánto material te lleva?": "Kiek medžiagų sunaudoji?",
   "Lo que te cuesta hacer una: filamento, tornillos, embalaje. Si no lo sabes, déjalo en blanco.": "Kiek tau kainuoja pagaminti vieną: filamentas, varžtai, pakuotė. Jei nežinai, palik tuščią.",
-  "GANAS POR CADA UNA": "UŽDIRBI UŽ KIEKVIENĄ"
+  "GANAS POR CADA UNA": "UŽDIRBI UŽ KIEKVIENĄ",
+  "Avísame si me queda algo": "Priminki, jei kas nors liks",
+  "Te aviso si te queda algo": "Priminsiu, jei kas nors liks",
+  "Te queda uno de la misión": "Liko vienas iš misijos",
+  "Te faltan {n} de la misión": "Liko {n} iš misijos",
+  "−{v} de vida si lo dejas así": "−{v} gyvybės, jei taip paliksi"
 }

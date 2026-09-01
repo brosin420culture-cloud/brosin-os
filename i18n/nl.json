@@ -1007,5 +1007,10 @@
   "¿A cuánto lo vendes?": "Voor hoeveel verkoop je het?",
   "¿Cuánto material te lleva?": "Hoeveel materiaal kost het je?",
   "Lo que te cuesta hacer una: filamento, tornillos, embalaje. Si no lo sabes, déjalo en blanco.": "Wat het je kost om er één te maken: filament, schroeven, verpakking. Weet je het niet, laat het dan leeg.",
-  "GANAS POR CADA UNA": "JE VERDIENT PER STUK"
+  "GANAS POR CADA UNA": "JE VERDIENT PER STUK",
+  "Avísame si me queda algo": "Waarschuw me als er nog wat open staat",
+  "Te aviso si te queda algo": "Ik waarschuw je als er nog wat open staat",
+  "Te queda uno de la misión": "Nog eentje uit je missie",
+  "Te faltan {n} de la misión": "Nog {n} uit je missie",
+  "−{v} de vida si lo dejas así": "−{v} HP als je het zo laat"
 }

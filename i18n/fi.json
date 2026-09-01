@@ -1007,5 +1007,10 @@
   "¿A cuánto lo vendes?": "Millä hinnalla myyt sen?",
   "¿Cuánto material te lleva?": "Paljonko materiaalia siihen menee?",
   "Lo que te cuesta hacer una: filamento, tornillos, embalaje. Si no lo sabes, déjalo en blanco.": "Paljonko yhden tekeminen maksaa: filamentti, ruuvit, pakkaus. Jos et tiedä, jätä tyhjäksi.",
-  "GANAS POR CADA UNA": "TIENAAT PER KAPPALE"
+  "GANAS POR CADA UNA": "TIENAAT PER KAPPALE",
+  "Avísame si me queda algo": "Muistuta, jos jotain jää kesken",
+  "Te aviso si te queda algo": "Muistutan, jos jotain jää kesken",
+  "Te queda uno de la misión": "Yksi jäljellä tehtävästäsi",
+  "Te faltan {n} de la misión": "{n} jäljellä tehtävästäsi",
+  "−{v} de vida si lo dejas así": "−{v} HP, jos jätät sen noin"
 }
