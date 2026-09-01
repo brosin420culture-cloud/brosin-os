@@ -815,14 +815,15 @@ informa: agobia.
 
 ### Dos trampas de esta sesión, para quien venga detrás
 
-1. **No pulses "Commit changes" en GitHub hasta que los ficheros hayan terminado
-   de subir.** Le di con "Uploading 23 of 25" en pantalla y no se comiteó nada —
-   silenciosamente. Espera a que desaparezca ese texto, no a un tiempo fijo.
+1. **No pulses "Commit changes" hasta que los ficheros hayan terminado de subir.**
+   Le di con el contador de subida aún en pantalla y no se comiteó nada, en
+   silencio. Espera a que ese texto desaparezca, no a un tiempo fijo. Y después,
+   VERIFICA leyendo el fichero del repo: el clic no garantiza el commit.
 2. **Al probar en el iframe, mata el iframe ANTES de tocar localStorage.** Está
-   escrito en la v47 y volví a caer: borré el almacén, luego quité el iframe, y su
-   `pagehide` lo restauró encima. Me pasé un buen rato persiguiendo un bug de
-   bienvenida que no existía: la pantalla de bienvenida SÍ funciona, yo leía solo
-   los primeros caracteres de la página y veía el inicio que hay detrás.
+   escrito desde la v47 y volví a caer: borré el almacén, luego quité el iframe, y
+   su `pagehide` lo restauró encima. Me pasé un rato persiguiendo un fallo de la
+   pantalla de bienvenida que no existía: funciona bien, yo leía solo los primeros
+   caracteres de la página y veía el inicio que hay detrás.
 
 **Traducciones**: 5 claves nuevas × 25 idiomas. 1009 → 1014.
 
