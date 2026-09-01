@@ -352,7 +352,8 @@ El fichero `test_v31.js` (78 comprobaciones, todas en verde) cubre: forma y requ
 | **v45** | **subida web** | **El Juego con pestaña propia y radar de áreas, temporadas de 30/90 días, clan con clasificación por códigos, y "hoy" pasa a hora local. 885 claves, I18N_VER = 45** |
 | **v46** | **subida web** | **Las fotos de prueba salen a IndexedDB, visor de pruebas, 12 logros que pagan monedas y celebración al subir de nivel. 924 claves, I18N_VER = 46** |
 | **v47** | **subida web** | **Historial del juego con el motivo de cada movimiento, análisis por día de la semana y respuesta al tacto en toda la app. 947 claves, I18N_VER = 47** |
-| **v48** | **subida web** | **Proyectos: gastos, ventas, punto de equilibrio y beneficio real por semana y mes. Banco de pruebas y limpieza de terminología. 1009 claves, I18N_VER = 48** ← actual |
+| **v48** | **subida web** | **Proyectos: gastos, ventas, punto de equilibrio y beneficio real por semana y mes. Banco de pruebas y limpieza de terminología. 1009 claves, I18N_VER = 48** |
+| **v49** | **subida web** | **Aviso de la misión del día a la hora que elijas, y la insignia del icono cuenta la misión y no todo el banco. 1014 claves, I18N_VER = 49** ← actual |
 
 ---
 
@@ -787,3 +788,43 @@ Ojo con dos colisiones que se resolvieron y conviene no deshacer:
 **Traducciones**: 64 claves nuevas × 25 idiomas. 947 → 1009.
 
 **Pendiente**: el aviso de la misión del día a una hora elegida.
+
+---
+
+## v49 — El aviso de la misión (28/08/2026)
+
+Última tarea que quedaba abierta del juego. En **Juego › Misión**, debajo de los
+cinco del día: un interruptor y una hora.
+
+**Tres reglas de cortesía**, y son deliberadas: **una vez al día** (la marca vive
+en `misionNagRef`), **solo si te queda algo** por marcar, y **nunca antes de la
+hora que elijas**. Avisar de lo que ya has hecho es ruido, y el ruido se acaba
+silenciando — y una app silenciada no sirve para nada.
+
+El ajuste vive **donde se ve la misión, no escondido en Ajustes**: el sitio
+natural para decidir si quieres que te recuerden algo es justo donde ves ese algo.
+
+Va en su propio `useEffect` con su intervalo, sin tocar el planificador de
+eventos que ya existía. Duplica un temporizador, sí, pero a cambio no puede
+romper los avisos de agenda, que llevan versiones funcionando.
+
+**Y un arreglo pequeño que importa**: la insignia del icono contaba TODOS los
+hábitos pendientes del banco. Ahora cuenta solo los de la misión, que es lo que
+la app te pide de verdad. Con veinte hábitos en el banco, un "20" en el icono no
+informa: agobia.
+
+### Dos trampas de esta sesión, para quien venga detrás
+
+1. **No pulses "Commit changes" en GitHub hasta que los ficheros hayan terminado
+   de subir.** Le di con "Uploading 23 of 25" en pantalla y no se comiteó nada —
+   silenciosamente. Espera a que desaparezca ese texto, no a un tiempo fijo.
+2. **Al probar en el iframe, mata el iframe ANTES de tocar localStorage.** Está
+   escrito en la v47 y volví a caer: borré el almacén, luego quité el iframe, y su
+   `pagehide` lo restauró encima. Me pasé un buen rato persiguiendo un bug de
+   bienvenida que no existía: la pantalla de bienvenida SÍ funciona, yo leía solo
+   los primeros caracteres de la página y veía el inicio que hay detrás.
+
+**Traducciones**: 5 claves nuevas × 25 idiomas. 1009 → 1014.
+
+**No queda nada abierto del juego.** Lo siguiente, según el propio HQ, no es
+añadir: es que dos personas lo usen siete días seguidos.
